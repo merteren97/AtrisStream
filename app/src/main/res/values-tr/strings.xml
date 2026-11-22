@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AtrisStream</string>
+
+    <!-- Navigation -->
+    <string name="nav_home">Ana Sayfa</string>
+    <string name="nav_movies">Filmler</string>
+    <string name="nav_series">Diziler</string>
+    <string name="nav_anime">Anime</string>
+    <string name="nav_search">Ara</string>
+    <string name="nav_watchlist">İzleme Listem</string>
+    <string name="nav_resources">Kaynaklar</string>
+    <string name="nav_settings">Ayarlar</string>
+
+    <!-- Common -->
+    <string name="action_play">Oynat</string>
+    <string name="action_resume">Devam Et</string>
+    <string name="action_details">Detaylar</string>
+    <string name="action_retry">Tekrar Dene</string>
+    <string name="action_back">Geri</string>
+    <string name="action_cancel">İptal</string>
+    <string name="action_add">Ekle</string>
+    <string name="action_remove">Kaldır</string>
+    <string name="action_load_more">Daha Fazla Yükle</string>
+    <string name="loading">Yükleniyor…</string>
+    <string name="error_generic">Bir hata oluştu</string>
+    <string name="no_sources_enabled">Etkin kaynak yok. Kaynak eklemek veya etkinleştirmek için Kaynaklar sekmesini açın.</string>
+
+    <!-- Home -->
+    <string name="home_continue_watching">İzlemeye Devam Et</string>
+    <string name="home_active_source">Aktif Kaynak</string>
+    <string name="home_featured">Öne Çıkan</string>
+    <string name="home_empty">Bu kaynaktan içerik bulunamadı.</string>
+
+    <!-- Browse -->
+    <string name="browse_movies_title">Filmler</string>
+    <string name="browse_series_title">Diziler</string>
+    <string name="browse_anime_title">Anime</string>
+    <string name="browse_empty">Bu kategori için içerik bulunamadı.</string>
+
+    <!-- Search -->
+    <string name="search_title">Ara</string>
+    <string name="search_hint">Film, dizi veya anime ara…</string>
+    <string name="search_button">Ara</string>
+    <string name="search_empty_prompt">Etkin kaynaklarda aramak için bir başlık yazın veya hızlı etiket seçin.</string>
+    <string name="search_no_results">\"%1$s\" için sonuç bulunamadı.</string>
+
+    <!-- Watchlist -->
+    <string name="watchlist_title">İzleme Listem</string>
+    <string name="watchlist_empty">İzleme listeniz boş. Detay sayfasından film veya dizi ekleyebilirsiniz.</string>
+
+    <!-- Details -->
+    <string name="details_add_watchlist">Listeye Ekle</string>
+    <string name="details_remove_watchlist">Listemde</string>
+    <string name="details_seasons">Sezonlar</string>
+    <string name="details_episodes">Bölümler</string>
+    <string name="details_season_label">%1$d. Sezon</string>
+    <string name="details_episode_label">B%1$d • %2$s</string>
+    <string name="details_cast">Oyuncular</string>
+    <string name="details_runtime_min">%1$d dk</string>
+
+    <!-- Resources / Kaynaklar -->
+    <string name="resources_title">Kaynaklar</string>
+    <string name="resources_subtitle">Yerleşik, JSON manifest ve QuickJS yayın kaynaklarını yönetin.</string>
+    <string name="resources_add_url">Kaynak / Repo URL Ekle</string>
+    <string name="resources_add_dialog_title">Kaynak veya Repo URL Ekle</string>
+    <string name="resources_add_dialog_hint">https://ornek.com/source.json veya repo.json</string>
+    <string name="resources_adding">Kaynak ekleniyor…</string>
+    <string name="resources_added_count">%1$d kaynak eklendi</string>
+    <string name="resources_enabled">Etkin</string>
+    <string name="resources_disabled">Devre Dışı</string>
+    <string name="resources_test">Bağlantıyı Test Et</string>
+    <string name="resources_testing">Test ediliyor…</string>
+    <string name="resources_test_ok">Tamam • %1$d ms • %2$d içerik</string>
+    <string name="resources_test_fail">Hata: %1$s</string>
+    <string name="resources_builtin">Yerleşik</string>
+    <string name="resources_lan_title">LAN Web Yapıştırma Sunucusu</string>
+    <string name="resources_lan_desc">Aynı Wi-Fi ağındaki telefon veya bilgisayardan bu adresi açarak kaynak URL\'sini doğrudan TV\'ye gönderin.</string>
+    <string name="resources_lan_start">Sunucuyu Başlat</string>
+    <string name="resources_lan_stop">Sunucuyu Durdur</string>
+    <string name="resources_lan_running">Çalışıyor: %1$s</string>
+    <string name="resources_lan_stopped">Sunucu durduruldu</string>
+
+    <!-- Settings & About -->
+    <string name="settings_title">Ayarlar</string>
+    <string name="settings_language">Dil</string>
+    <string name="settings_lang_system">Sistem</string>
+    <string name="settings_lang_en">English</string>
+    <string name="settings_lang_tr">Türkçe</string>
+    <string name="settings_quality">Tercih Edilen Kalite</string>
+    <string name="settings_subtitle_lang">Tercih Edilen Altyazı Dili</string>
+    <string name="settings_subtitle_off">Kapalı</string>
+    <string name="settings_subtitle_style">Altyazı Görünümü</string>
+    <string name="settings_subtitle_size">Yazı Boyutu: %1$d sp</string>
+    <string name="settings_subtitle_color">Yazı Rengi</string>
+    <string name="settings_subtitle_bg">Arka Plan Opaklığı</string>
+    <string name="settings_subtitle_preview">AtrisStream örnek altyazı önizlemesi</string>
+    <string name="about_title">AtrisStream Hakkında</string>
+    <string name="about_version">Sürüm 1.0.0 • Açık Kaynak (MIT Lisansı)</string>
+    <string name="about_description">AtrisStream, dinamik çoklu kaynak desteğine sahip topluluk odaklı bir Android TV ve Google TV medya oynatıcısıdır. GitHub üzerinden katkıda bulunabilirsiniz.</string>
+    <string name="about_visit_site">AtrisHub\'ı Ziyaret Et</string>
+    <string name="about_url">https://atrishub.com</string>
+</resources>

@@ -1,0 +1,25 @@
+{
+  "name": "AtrisStream Community Repo",
+  "version": "1.0.0",
+  "homepage": "https://atrishub.com",
+  "sources": [
+    {
+      "id": "example-json-source",
+      "name": "Example Stream Site",
+      "version": "1.0.0",
+      "driverType": "JSON_MANIFEST",
+      "manifestUrl": "https://raw.githubusercontent.com/AtrisHub/AtrisStream/main/docs/source-templates/sample-json-source.json",
+      "supportedTypes": ["MOVIE", "TV"],
+      "languages": ["tr", "en"]
+    },
+    {
+      "id": "example-js-source",
+      "name": "Example JS Provider",
+      "version": "1.0.0",
+      "driverType": "JS_PLUGIN",
+      "manifestUrl": "https://raw.githubusercontent.com/AtrisHub/AtrisStream/main/docs/source-templates/sample-js-plugin.js",
+      "supportedTypes": ["MOVIE", "TV", "ANIME"],
+      "languages": ["tr", "en"]
+    }
+  ]
+}

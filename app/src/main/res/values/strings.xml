@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AtrisStream</string>
+
+    <!-- Navigation -->
+    <string name="nav_home">Home</string>
+    <string name="nav_movies">Movies</string>
+    <string name="nav_series">Series</string>
+    <string name="nav_anime">Anime</string>
+    <string name="nav_search">Search</string>
+    <string name="nav_watchlist">Watchlist</string>
+    <string name="nav_resources">Resources</string>
+    <string name="nav_settings">Settings</string>
+
+    <!-- Common -->
+    <string name="action_play">Play</string>
+    <string name="action_resume">Resume</string>
+    <string name="action_details">Details</string>
+    <string name="action_retry">Retry</string>
+    <string name="action_back">Back</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_add">Add</string>
+    <string name="action_remove">Remove</string>
+    <string name="action_load_more">Load More</string>
+    <string name="loading">Loading…</string>
+    <string name="error_generic">Something went wrong</string>
+    <string name="no_sources_enabled">No sources enabled. Open Resources to enable or add a source.</string>
+
+    <!-- Home -->
+    <string name="home_continue_watching">Continue Watching</string>
+    <string name="home_active_source">Active Source</string>
+    <string name="home_featured">Featured</string>
+    <string name="home_empty">No content available from this source.</string>
+
+    <!-- Browse -->
+    <string name="browse_movies_title">Movies</string>
+    <string name="browse_series_title">Series</string>
+    <string name="browse_anime_title">Anime</string>
+    <string name="browse_empty">No items found for this category.</string>
+
+    <!-- Search -->
+    <string name="search_title">Search</string>
+    <string name="search_hint">Search movies, series, anime…</string>
+    <string name="search_button">Search</string>
+    <string name="search_empty_prompt">Enter a title or pick a quick tag to search across enabled sources.</string>
+    <string name="search_no_results">No results found for \"%1$s\".</string>
+
+    <!-- Watchlist -->
+    <string name="watchlist_title">Watchlist</string>
+    <string name="watchlist_empty">Your watchlist is empty. Save movies or series from their Details page.</string>
+
+    <!-- Details -->
+    <string name="details_add_watchlist">Add to Watchlist</string>
+    <string name="details_remove_watchlist">In Watchlist</string>
+    <string name="details_seasons">Seasons</string>
+    <string name="details_episodes">Episodes</string>
+    <string name="details_season_label">Season %1$d</string>
+    <string name="details_episode_label">E%1$d • %2$s</string>
+    <string name="details_cast">Cast</string>
+    <string name="details_runtime_min">%1$d min</string>
+
+    <!-- Resources / Kaynaklar -->
+    <string name="resources_title">Resources &amp; Sources</string>
+    <string name="resources_subtitle">Manage built-in, JSON manifest, and QuickJS streaming sources.</string>
+    <string name="resources_add_url">Add Resource / Repo URL</string>
+    <string name="resources_add_dialog_title">Add Source or Repository URL</string>
+    <string name="resources_add_dialog_hint">https://example.com/source.json or repo.json</string>
+    <string name="resources_adding">Adding source…</string>
+    <string name="resources_added_count">Added %1$d source(s)</string>
+    <string name="resources_enabled">Enabled</string>
+    <string name="resources_disabled">Disabled</string>
+    <string name="resources_test">Test Connection</string>
+    <string name="resources_testing">Testing…</string>
+    <string name="resources_test_ok">OK • %1$d ms • %2$d items</string>
+    <string name="resources_test_fail">Failed: %1$s</string>
+    <string name="resources_builtin">Built-in</string>
+    <string name="resources_lan_title">LAN Web Paste Server</string>
+    <string name="resources_lan_desc">Open this URL from your phone or PC on the same Wi-Fi to paste a source URL directly to the TV.</string>
+    <string name="resources_lan_start">Start Server</string>
+    <string name="resources_lan_stop">Stop Server</string>
+    <string name="resources_lan_running">Running at %1$s</string>
+    <string name="resources_lan_stopped">Server stopped</string>
+
+    <!-- Settings & About -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_language">Language</string>
+    <string name="settings_lang_system">System</string>
+    <string name="settings_lang_en">English</string>
+    <string name="settings_lang_tr">Türkçe</string>
+    <string name="settings_quality">Preferred Quality</string>
+    <string name="settings_subtitle_lang">Preferred Subtitle Language</string>
+    <string name="settings_subtitle_off">Off</string>
+    <string name="settings_subtitle_style">Subtitle Appearance</string>
+    <string name="settings_subtitle_size">Font Size: %1$d sp</string>
+    <string name="settings_subtitle_color">Text Color</string>
+    <string name="settings_subtitle_bg">Background Opacity</string>
+    <string name="settings_subtitle_preview">Sample subtitle preview on AtrisStream</string>
+    <string name="about_title">About AtrisStream</string>
+    <string name="about_version">Version 1.0.0 • Open Source (MIT License)</string>
+    <string name="about_description">AtrisStream is a community-driven Android TV &amp; Google TV media player with dynamic multi-source support. Contribute sources or code on GitHub.</string>
+    <string name="about_visit_site">Visit AtrisHub</string>
+    <string name="about_url">https://atrishub.com</string>
+</resources>

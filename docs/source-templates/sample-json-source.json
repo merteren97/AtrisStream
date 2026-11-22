@@ -1,0 +1,35 @@
+{
+  "id": "example-json-source",
+  "name": "Example Stream Site",
+  "version": "1.0.0",
+  "baseUrl": "https://example.com",
+  "driverType": "JSON_MANIFEST",
+  "supportedTypes": ["MOVIE", "TV"],
+  "languages": ["tr", "en"],
+  "headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    "Referer": "https://example.com/"
+  },
+  "endpoints": {
+    "home": "/",
+    "browseMovie": "/movies?page={page}",
+    "browseTv": "/series?page={page}",
+    "search": "/search?q={query}&page={page}",
+    "details": "/title/{id}"
+  },
+  "selectors": {
+    "homeSection": "section.media-row",
+    "homeSectionTitle": "h2.row-title",
+    "cardItem": "article.media-card",
+    "cardTitle": "h3.title",
+    "cardPoster": "img.poster@data-src|src",
+    "cardUrl": "a.card-link@href",
+    "cardYear": "span.year",
+    "cardRating": "span.rating",
+    "detailsTitle": "h1.media-title",
+    "detailsDescription": "p.synopsis",
+    "detailsBackdrop": "div.hero@data-bg",
+    "streamVideo": "video source@src",
+    "subtitleTrack": "track[kind=subtitles]@src"
+  }
+}

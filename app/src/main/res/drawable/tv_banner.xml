@@ -1,0 +1,70 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="320dp"
+    android:height="180dp"
+    android:viewportWidth="320"
+    android:viewportHeight="180">
+
+    <!-- Dark Cinematic Background -->
+    <path android:pathData="M0,0 L320,0 L320,180 L0,180 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:endX="320"
+                android:endY="180"
+                android:startX="0"
+                android:startY="0"
+                android:type="linear">
+                <item
+                    android:color="#FF0B0E14"
+                    android:offset="0.0" />
+                <item
+                    android:color="#FF141923"
+                    android:offset="0.6" />
+                <item
+                    android:color="#FF1C2331"
+                    android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Subtle Glow Circle -->
+    <path
+        android:fillAlpha="0.14"
+        android:fillColor="#38BDF8"
+        android:pathData="M160,90 m-72,0 a72,72 0 1,0 144,0 a72,72 0 1,0 -144,0" />
+
+    <!-- Outer Ring -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M118,54 L202,54 C210,54 216,60 216,68 L216,112 C216,120 210,126 202,126 L118,126 C110,126 104,120 104,112 L104,68 C104,60 110,54 118,54 Z"
+        android:strokeWidth="3"
+        android:strokeColor="#38BDF8" />
+
+    <!-- Play Triangle -->
+    <path android:pathData="M148,72 L182,90 L148,108 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:endX="182"
+                android:endY="108"
+                android:startX="148"
+                android:startY="72"
+                android:type="linear">
+                <item
+                    android:color="#38BDF8"
+                    android:offset="0.0" />
+                <item
+                    android:color="#818CF8"
+                    android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Accent Stream Bars -->
+    <path
+        android:fillColor="#38BDF8"
+        android:pathData="M126,138 L194,138 C195.5,138 196.5,139 196.5,140.5 C196.5,142 195.5,143 194,143 L126,143 C124.5,143 123.5,142 123.5,140.5 C123.5,139 124.5,138 126,138 Z" />
+    <path
+        android:fillColor="#818CF8"
+        android:pathData="M140,149 L180,149 C181.2,149 182,149.8 182,151 C182,152.2 181.2,153 180,153 L140,153 C138.8,153 138,152.2 138,151 C138,149.8 138.8,149 140,149 Z" />
+
+</vector>
