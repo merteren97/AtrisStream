@@ -9,6 +9,7 @@ import com.atrishub.atrisstream.core.model.MediaCard
 import com.atrishub.atrisstream.core.model.MediaProvider
 import com.atrishub.atrisstream.core.model.WatchProgress
 import com.atrishub.atrisstream.core.sourceengine.SourceManager
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -28,7 +29,7 @@ data class HomeUiState(
 
 class HomeViewModel(
     private val sourceManager: SourceManager,
-    repository: AtrisRepository
+    private val repository: AtrisRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HomeUiState())
@@ -67,6 +68,28 @@ class HomeViewModel(
         }
     }
 
+    fun removeFromContinueWatching(progress: WatchProgress) {
+        viewModelScope.launch {
+            repository.deleteWatchProgress(
+                sourceId = progress.sourceId,
+                mediaId = progress.mediaId,
+                seasonNumber = progress.seasonNumber,
+                episodeNumber = progress.episodeNumber
+            )
+        }
+    }
+
+    fun markAsWatched(progress: WatchProgress) {
+        viewModelScope.launch {
+            repository.markWatchProgressCompleted(
+                sourceId = progress.sourceId,
+                mediaId = progress.mediaId,
+                seasonNumber = progress.seasonNumber,
+                episodeNumber = progress.episodeNumber
+            )
+        }
+    }
+
     private suspend fun loadHomeForSelected(
         providers: List<MediaProvider>,
         sourceId: String?
@@ -94,6 +117,7 @@ class HomeViewModel(
                 error = null
             )
         }.onFailure { throwable ->
+            if (throwable is CancellationException) throw throwable
             _uiState.value = _uiState.value.copy(
                 isLoading = false,
                 error = throwable.message ?: "Failed to load home feed"

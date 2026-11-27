@@ -33,6 +33,7 @@ class ResourcesViewModel(
     val isLanServerRunning: StateFlow<Boolean> = lanPasteServer.isRunning
     val lanServerUrl: StateFlow<String?> = lanPasteServer.serverUrl
     val lanLastStatus: StateFlow<String?> = lanPasteServer.lastStatusMessage
+    val lanPairingPin: StateFlow<String?> = lanPasteServer.pairingPin
 
     private val _uiState = MutableStateFlow(ResourcesUiState())
     val uiState: StateFlow<ResourcesUiState> = _uiState.asStateFlow()
@@ -43,6 +44,10 @@ class ResourcesViewModel(
         } else {
             lanPasteServer.start()
         }
+    }
+
+    fun regenerateLanPin() {
+        lanPasteServer.regeneratePin()
     }
 
     fun addSourceUrl(url: String, onSuccess: () -> Unit) {

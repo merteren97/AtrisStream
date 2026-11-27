@@ -15,7 +15,8 @@ data class WatchProgressEntity(
     val episodeNumber: Int?,
     val positionMs: Long,
     val durationMs: Long,
-    val updatedAt: Long
+    val updatedAt: Long,
+    val isCompleted: Boolean = false
 ) {
     companion object {
         fun buildKeyId(

@@ -6,6 +6,7 @@ import com.atrishub.atrisstream.core.database.mapper.toEntity
 import com.atrishub.atrisstream.core.database.mapper.toModel
 import com.atrishub.atrisstream.core.model.InstalledSource
 import com.atrishub.atrisstream.core.model.WatchProgress
+import com.atrishub.atrisstream.core.model.WatchProgressPolicy
 import com.atrishub.atrisstream.core.model.WatchlistItem
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -47,9 +48,33 @@ class AtrisRepository(
     // --- Watch Progress ---
 
     fun observeContinueWatching(limit: Int = 20): Flow<List<WatchProgress>> =
-        watchProgressDao.observeContinueWatching(limit).map { entities ->
+        watchProgressDao.observeContinueWatching(
+            limit = limit,
+            minPositionMs = WatchProgressPolicy.MIN_RESUME_POSITION_MS
+        ).map { entities ->
             entities.map { it.toModel() }
+                .distinctBy { it.sourceId to it.mediaId }
+                .take(limit)
         }
+
+    suspend fun getAllWatchProgress(): List<WatchProgress> =
+        watchProgressDao.getAll().map { it.toModel() }
+
+    suspend fun getLatestProgressForMedia(sourceId: String, mediaId: String): WatchProgress? =
+        watchProgressDao.getLatestProgressForMedia(sourceId, mediaId)?.toModel()
+
+    suspend fun getAllProgressForMedia(sourceId: String, mediaId: String): List<WatchProgress> =
+        watchProgressDao.getAllProgressForMedia(sourceId, mediaId).map { it.toModel() }
+
+    suspend fun markWatchProgressCompleted(
+        sourceId: String,
+        mediaId: String,
+        seasonNumber: Int? = null,
+        episodeNumber: Int? = null
+    ) {
+        val keyId = WatchProgressEntity.buildKeyId(sourceId, mediaId, seasonNumber, episodeNumber)
+        watchProgressDao.markCompleted(keyId, System.currentTimeMillis())
+    }
 
     suspend fun getWatchProgress(
         sourceId: String,

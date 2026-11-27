@@ -5,6 +5,8 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.atrishub.atrisstream.core.model.MediaCard
 import com.atrishub.atrisstream.core.sourceengine.SourceManager
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -35,6 +37,8 @@ class SearchViewModel(
     private val _uiState = MutableStateFlow(SearchUiState())
     val uiState: StateFlow<SearchUiState> = _uiState.asStateFlow()
 
+    private var searchJob: Job? = null
+
     fun onQueryChanged(newQuery: String) {
         _uiState.value = _uiState.value.copy(query = newQuery)
     }
@@ -43,6 +47,7 @@ class SearchViewModel(
         val activeQuery = (overrideQuery ?: _uiState.value.query).trim()
         if (activeQuery.isBlank()) return
 
+        searchJob?.cancel()
         _uiState.value = _uiState.value.copy(
             query = activeQuery,
             hasSearched = true,
@@ -50,17 +55,20 @@ class SearchViewModel(
             error = null
         )
 
-        viewModelScope.launch {
+        searchJob = viewModelScope.launch {
             runCatching {
                 val providers = sourceManager.observeEnabledProviders().first()
                 coroutineScope {
                     providers.map { provider ->
                         async {
-                            val result = runCatching { provider.search(activeQuery, page = 1) }.getOrNull()
+                            val result = runCatching { provider.search(activeQuery, page = 1) }
+                                .onFailure { if (it is CancellationException) throw it }
+                                .getOrNull()
                             SearchResultGroup(
                                 sourceId = provider.manifest.id,
                                 sourceName = provider.manifest.name,
                                 items = result?.items.orEmpty()
+                                    .distinctBy { "${it.sourceId}_${it.type.name}_${it.id}" }
                             )
                         }
                     }.awaitAll()
@@ -72,6 +80,7 @@ class SearchViewModel(
                     error = null
                 )
             }.onFailure { throwable ->
+                if (throwable is CancellationException) throw throwable
                 _uiState.value = _uiState.value.copy(
                     isSearching = false,
                     error = throwable.message ?: "Search failed"

@@ -44,3 +44,10 @@ captures/
 # OS specific
 .DS_Store
 Thumbs.db
+
+# Desktop (Tauri + Vite) build outputs & dependencies
+desktop/node_modules/
+desktop/dist/
+desktop/src-tauri/target/
+desktop/src-tauri/gen/
+*.tsbuildinfo

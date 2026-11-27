@@ -11,7 +11,12 @@ import com.atrishub.atrisstream.core.model.PlayerLaunchArgs
 import com.atrishub.atrisstream.core.model.StreamResult
 import com.atrishub.atrisstream.core.model.SubtitleAppearance
 import com.atrishub.atrisstream.core.model.WatchProgress
+import com.atrishub.atrisstream.core.model.WatchProgressPolicy
 import com.atrishub.atrisstream.core.sourceengine.SourceManager
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -31,7 +36,8 @@ class PlayerViewModel(
     initialArgs: PlayerLaunchArgs,
     private val sourceManager: SourceManager,
     private val repository: AtrisRepository,
-    private val preferencesRepository: UserPreferencesRepository
+    private val preferencesRepository: UserPreferencesRepository,
+    private val appScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(PlayerUiState(launchArgs = initialArgs))
@@ -62,10 +68,15 @@ class PlayerViewModel(
         }
     }
 
-    fun saveProgress(positionMs: Long, durationMs: Long) {
+    fun saveProgress(positionMs: Long, durationMs: Long, isEnded: Boolean = false) {
         val args = _uiState.value.launchArgs
-        if (durationMs <= 0L) return
-        viewModelScope.launch {
+        if (durationMs <= 0L || args.type == MediaType.LIVE) return
+
+        val completed = WatchProgressPolicy.isPlaybackCompleted(positionMs, durationMs, isEnded)
+        if (!completed && positionMs < WatchProgressPolicy.MIN_RESUME_POSITION_MS) return
+
+        val savedPositionMs = if (isEnded) durationMs else positionMs
+        appScope.launch {
             repository.upsertWatchProgress(
                 WatchProgress(
                     mediaId = args.mediaId,
@@ -75,8 +86,9 @@ class PlayerViewModel(
                     posterUrl = args.posterUrl,
                     seasonNumber = args.seasonNumber,
                     episodeNumber = args.episodeNumber,
-                    positionMs = positionMs,
+                    positionMs = savedPositionMs,
                     durationMs = durationMs,
+                    isCompleted = completed,
                     updatedAt = System.currentTimeMillis()
                 )
             )
@@ -89,6 +101,15 @@ class PlayerViewModel(
         val nextEp = seasonEpisodes.firstOrNull { it.episodeNumber == currentEpNum + 1 }
             ?: seasonEpisodes.dropWhile { it.episodeNumber <= currentEpNum }.firstOrNull()
             ?: return
+
+        appScope.launch {
+            repository.markWatchProgressCompleted(
+                sourceId = current.sourceId,
+                mediaId = current.mediaId,
+                seasonNumber = current.seasonNumber,
+                episodeNumber = current.episodeNumber
+            )
+        }
 
         val baseTitle = current.title.substringBefore(" • S")
         val nextArgs = current.copy(
@@ -145,6 +166,7 @@ class PlayerViewModel(
                     hasNextEpisode = hasNext
                 )
             }.onFailure { throwable ->
+                if (throwable is CancellationException) throw throwable
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
                     error = throwable.message ?: "Failed to load stream"
@@ -157,10 +179,11 @@ class PlayerViewModel(
         private val initialArgs: PlayerLaunchArgs,
         private val sourceManager: SourceManager,
         private val repository: AtrisRepository,
-        private val preferencesRepository: UserPreferencesRepository
+        private val preferencesRepository: UserPreferencesRepository,
+        private val appScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T =
-            PlayerViewModel(initialArgs, sourceManager, repository, preferencesRepository) as T
+            PlayerViewModel(initialArgs, sourceManager, repository, preferencesRepository, appScope) as T
     }
 }

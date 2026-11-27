@@ -99,6 +99,34 @@ class SourceManager(
 
     suspend fun setSourceEnabled(id: String, enabled: Boolean) {
         repository.setSourceEnabled(id, enabled)
+        if (!enabled) {
+            providerCache.remove(id)?.let { cached ->
+                runCatching { (cached.provider as? Closeable)?.close() }
+            }
+        }
+    }
+
+    fun trimMemory() {
+        val iterator = providerCache.entries.iterator()
+        while (iterator.hasNext()) {
+            val entry = iterator.next()
+            val provider = entry.value.provider
+            if (provider is MovyProvider) {
+                provider.trimMemory()
+            } else if (provider is Closeable) {
+                runCatching { provider.close() }
+                iterator.remove()
+            }
+        }
+    }
+
+    fun close() {
+        val iterator = providerCache.entries.iterator()
+        while (iterator.hasNext()) {
+            val entry = iterator.next()
+            runCatching { (entry.value.provider as? Closeable)?.close() }
+            iterator.remove()
+        }
     }
 
     suspend fun removeSource(id: String): Boolean {

@@ -29,6 +29,7 @@ fun PlayerRoute(
         hasNextEpisode = state.hasNextEpisode,
         onUpdateSubtitleAppearance = { viewModel.updateSubtitleAppearance(it) },
         onProgressUpdate = { pos, dur -> viewModel.saveProgress(pos, dur) },
+        onPlaybackEnded = { pos, dur -> viewModel.saveProgress(pos, dur, isEnded = true) },
         onRetryLoadStreams = { viewModel.retry() },
         onNextEpisode = { viewModel.playNextEpisode() },
         onBack = onBack

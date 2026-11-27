@@ -21,6 +21,7 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import java.io.Closeable
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Host HTTP bridge exposed to sandboxed QuickJS plugins as `atrisHttp`.
@@ -46,6 +47,7 @@ class JsPluginProvider(
     private val jsDispatcher = executor.asCoroutineDispatcher()
 
     private var quickJs: QuickJs? = null
+    private val closed = AtomicBoolean(false)
 
     private val bridge = object : AtrisHttpBridge {
         override fun get(url: String, headersJson: String?): String = runBlocking {
@@ -114,10 +116,13 @@ class JsPluginProvider(
         return json.decodeFromString(raw)
     }
 
-    private suspend fun evalString(expression: String): String = withContext(jsDispatcher) {
-        val runtime = ensureRuntime()
-        val result = runtime.evaluate(expression)
-        result?.toString() ?: throw IllegalStateException("QuickJS returned null for $expression")
+    private suspend fun evalString(expression: String): String {
+        check(!closed.get()) { "JsPluginProvider(${manifest.id}) is closed" }
+        return withContext(jsDispatcher) {
+            val runtime = ensureRuntime()
+            val result = runtime.evaluate(expression)
+            result?.toString() ?: throw IllegalStateException("QuickJS returned null for $expression")
+        }
     }
 
     private fun ensureRuntime(): QuickJs {
@@ -131,9 +136,12 @@ class JsPluginProvider(
     }
 
     override fun close() {
-        executor.execute {
-            runCatching { quickJs?.close() }
-            quickJs = null
+        if (!closed.compareAndSet(false, true)) return
+        runCatching {
+            executor.execute {
+                runCatching { quickJs?.close() }
+                quickJs = null
+            }
         }
         executor.shutdown()
     }

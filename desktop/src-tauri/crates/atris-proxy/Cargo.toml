@@ -1,0 +1,14 @@
+[package]
+name = "atris-proxy"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+axum = "0.8"
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli"] }
+uuid = { version = "1", features = ["v4"] }
+url = "2"
+serde = { version = "1", features = ["derive"] }
+atris-core = { path = "../atris-core" }
+futures-util = "0.3"

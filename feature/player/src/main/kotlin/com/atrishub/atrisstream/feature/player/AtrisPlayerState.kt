@@ -1,5 +1,6 @@
 package com.atrishub.atrisstream.feature.player
 
+import android.app.ActivityManager
 import android.content.Context
 import androidx.annotation.OptIn
 import androidx.compose.runtime.Stable
@@ -16,7 +17,10 @@ import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
+import androidx.media3.exoplayer.upstream.DefaultAllocator
 import com.atrishub.atrisstream.core.model.StreamResult
 import com.atrishub.atrisstream.core.model.StreamSource
 import com.atrishub.atrisstream.core.model.SubtitleTrack
@@ -35,7 +39,36 @@ class AtrisPlayerState(
     context: Context,
     private val okHttpClient: OkHttpClient
 ) {
-    val player: ExoPlayer = ExoPlayer.Builder(context.applicationContext).build()
+    private val appContext = context.applicationContext
+    private val isLowRam: Boolean =
+        (appContext.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager)
+            ?.isLowRamDevice == true
+
+    private val autoMaxVideoWidth: Int = if (isLowRam) 1280 else 1920
+    private val autoMaxVideoHeight: Int = if (isLowRam) 720 else 1080
+    private val autoMaxVideoBitrate: Int = if (isLowRam) 4_000_000 else 8_000_000
+
+    private val loadControl = DefaultLoadControl.Builder()
+        .setAllocator(DefaultAllocator(true, 32 * 1024))
+        .setBufferDurationsMs(15_000, 25_000, 2_000, 4_000)
+        .setTargetBufferBytes(if (isLowRam) 16 * 1024 * 1024 else 24 * 1024 * 1024)
+        .setPrioritizeTimeOverSizeThresholds(false)
+        .build()
+
+    private val trackSelector = DefaultTrackSelector(appContext).apply {
+        setParameters(
+            buildUponParameters()
+                .setMaxVideoSize(autoMaxVideoWidth, autoMaxVideoHeight)
+                .setMaxVideoBitrate(autoMaxVideoBitrate)
+        )
+    }
+
+    val player: ExoPlayer = ExoPlayer.Builder(appContext)
+        .setLoadControl(loadControl)
+        .setTrackSelector(trackSelector)
+        .build()
+
+    var onPlaybackEnded: ((positionMs: Long, durationMs: Long) -> Unit)? = null
 
     var isPlaying by mutableStateOf(false)
         private set
@@ -85,6 +118,9 @@ class AtrisPlayerState(
     private var preferredQuality: String = "Auto"
     private var preferredSubtitleLang: String = ""
     private var appliedInitialPreferences = false
+    private var currentStreamResult: StreamResult? = null
+    private var pausedPositionMs: Long = 0L
+    private var wasStoppedInBackground: Boolean = false
 
     private val listener = object : Player.Listener {
         override fun onIsPlayingChanged(playing: Boolean) {
@@ -96,6 +132,10 @@ class AtrisPlayerState(
             if (playbackState == Player.STATE_READY) {
                 playbackError = null
                 syncPositions()
+            } else if (playbackState == Player.STATE_ENDED) {
+                syncPositions()
+                val finalPos = if (durationMs > 0L) durationMs else currentPositionMs
+                onPlaybackEnded?.invoke(finalPos, durationMs)
             }
         }
 
@@ -126,6 +166,9 @@ class AtrisPlayerState(
         this.preferredQuality = preferredQuality
         this.preferredSubtitleLang = preferredSubtitleLang
         this.appliedInitialPreferences = false
+        this.currentStreamResult = streamResult
+        this.pausedPositionMs = 0L
+        this.wasStoppedInBackground = false
 
         streams = streamResult.streams
         subtitles = streamResult.subtitles
@@ -223,7 +266,14 @@ class AtrisPlayerState(
         val builder = player.trackSelectionParameters.buildUpon()
             .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
 
-        if (!option.isAuto) {
+        if (option.isAuto) {
+            builder
+                .setMaxVideoSize(autoMaxVideoWidth, autoMaxVideoHeight)
+                .setMaxVideoBitrate(autoMaxVideoBitrate)
+        } else {
+            builder
+                .clearVideoSizeConstraints()
+                .setMaxVideoBitrate(Int.MAX_VALUE)
             val group = player.currentTracks.groups.getOrNull(option.groupIndex)
             if (group != null && option.trackIndex in 0 until group.length) {
                 builder.addOverride(
@@ -309,6 +359,51 @@ class AtrisPlayerState(
         val dur = player.duration
         durationMs = if (dur == C.TIME_UNSET || dur < 0L) 0L else dur
         bufferedPositionMs = player.bufferedPosition.coerceAtLeast(0L)
+    }
+
+    /**
+     * Stops and clears media items and resets playback position state (e.g. when switching episodes).
+     */
+    fun clearPlayback() {
+        player.stop()
+        player.clearMediaItems()
+        currentStreamResult = null
+        streams = emptyList()
+        subtitles = emptyList()
+        currentStreamIndex = 0
+        currentPositionMs = 0L
+        durationMs = 0L
+        bufferedPositionMs = 0L
+        playbackError = null
+        isBuffering = false
+        pausedPositionMs = 0L
+        wasStoppedInBackground = false
+    }
+
+    /**
+     * Saves the current position and stops the player when moving to background.
+     */
+    fun stopForBackground() {
+        if (currentStreamResult != null && player.mediaItemCount > 0) {
+            pausedPositionMs = player.currentPosition.coerceAtLeast(0L)
+            wasStoppedInBackground = true
+            player.stop()
+        }
+    }
+
+    /**
+     * Re-prepares the active stream paused at [pausedPositionMs] when returning from background.
+     */
+    fun resumeFromBackground() {
+        if (wasStoppedInBackground) {
+            wasStoppedInBackground = false
+            val stream = currentStream ?: return
+            prepareStream(
+                stream = stream,
+                startPositionMs = pausedPositionMs,
+                playWhenReady = false
+            )
+        }
     }
 
     fun release() {

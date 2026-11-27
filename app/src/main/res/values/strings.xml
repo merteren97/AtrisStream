@@ -31,6 +31,8 @@
     <string name="home_active_source">Active Source</string>
     <string name="home_featured">Featured</string>
     <string name="home_empty">No content available from this source.</string>
+    <string name="action_remove_continue_watching">Remove from Continue Watching</string>
+    <string name="action_mark_watched">Mark as Watched</string>
 
     <!-- Browse -->
     <string name="browse_movies_title">Movies</string>
@@ -80,6 +82,9 @@
     <string name="resources_lan_stop">Stop Server</string>
     <string name="resources_lan_running">Running at %1$s</string>
     <string name="resources_lan_stopped">Server stopped</string>
+    <string name="resources_lan_pin">Pairing PIN: %1$s</string>
+    <string name="resources_lan_pin_hint">Enter this PIN in AtrisStream Desktop to pair &amp; sync over Wi-Fi.</string>
+    <string name="resources_lan_new_pin">New PIN</string>
 
     <!-- Settings & About -->
     <string name="settings_title">Settings</string>

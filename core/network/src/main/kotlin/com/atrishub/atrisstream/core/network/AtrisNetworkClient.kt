@@ -105,7 +105,7 @@ open class AtrisNetworkClient(
      */
     fun clientWithHeaders(headers: Map<String, String>): OkHttpClient {
         if (headers.isEmpty()) {
-            return baseClient.newBuilder().build()
+            return baseClient
         }
         return baseClient.newBuilder()
             .addInterceptor { chain ->

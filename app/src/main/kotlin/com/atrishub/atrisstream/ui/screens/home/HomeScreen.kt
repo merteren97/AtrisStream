@@ -12,30 +12,45 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import coil.size.Precision
 import com.atrishub.atrisstream.R
 import com.atrishub.atrisstream.core.model.MediaCard
 import com.atrishub.atrisstream.core.model.MediaType
@@ -57,6 +72,7 @@ fun HomeScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     val continueWatching by viewModel.continueWatching.collectAsState()
+    var selectedProgressForMenu by remember { mutableStateOf<WatchProgress?>(null) }
 
     LazyColumn(
         modifier = Modifier
@@ -153,6 +169,9 @@ fun HomeScreen(
                                 resumePositionMs = progress.positionMs
                             )
                         )
+                    },
+                    onLongClick = { progress ->
+                        selectedProgressForMenu = progress
                     }
                 )
             }
@@ -191,7 +210,11 @@ fun HomeScreen(
                     )
                 }
             } else {
-                items(state.sections, key = { it.title }) { section ->
+                itemsIndexed(
+                    items = state.sections,
+                    key = { index, section -> "${index}_${section.title}" },
+                    contentType = { _, _ -> "home_section" }
+                ) { _, section ->
                     TvSectionRow(
                         title = section.title,
                         items = section.items,
@@ -200,6 +223,82 @@ fun HomeScreen(
                         }
                     )
                 }
+            }
+        }
+    }
+
+    selectedProgressForMenu?.let { progress ->
+        ContinueWatchingActionDialog(
+            progress = progress,
+            onRemove = {
+                viewModel.removeFromContinueWatching(progress)
+                selectedProgressForMenu = null
+            },
+            onMarkWatched = {
+                viewModel.markAsWatched(progress)
+                selectedProgressForMenu = null
+            },
+            onDismiss = { selectedProgressForMenu = null }
+        )
+    }
+}
+
+@Composable
+private fun ContinueWatchingActionDialog(
+    progress: WatchProgress,
+    onRemove: () -> Unit,
+    onMarkWatched: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val firstButtonFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        runCatching { firstButtonFocus.requestFocus() }
+    }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier
+                .widthIn(min = 320.dp, max = 440.dp)
+                .border(1.dp, AtrisColors.CardBorder, RoundedCornerShape(16.dp)),
+            shape = RoundedCornerShape(16.dp),
+            color = AtrisColors.Surface
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Text(
+                    text = progress.title,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = AtrisColors.TextPrimary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                TvFocusButton(
+                    text = stringResource(R.string.action_remove_continue_watching),
+                    icon = Icons.Default.Delete,
+                    isPrimary = false,
+                    onClick = onRemove,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(firstButtonFocus)
+                )
+
+                TvFocusButton(
+                    text = stringResource(R.string.action_mark_watched),
+                    icon = Icons.Default.Check,
+                    isPrimary = true,
+                    onClick = onMarkWatched,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                TvFocusButton(
+                    text = stringResource(R.string.action_cancel),
+                    isPrimary = false,
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
         }
     }
@@ -212,6 +311,7 @@ private fun HeroSpotlightBanner(
     onDetails: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -222,8 +322,15 @@ private fun HeroSpotlightBanner(
     ) {
         val imageUrl = item.backdropUrl ?: item.posterUrl
         if (!imageUrl.isNullOrBlank()) {
+            val imageRequest = remember(imageUrl) {
+                ImageRequest.Builder(context)
+                    .data(imageUrl)
+                    .size(960, 540)
+                    .precision(Precision.INEXACT)
+                    .build()
+            }
             AsyncImage(
-                model = imageUrl,
+                model = imageRequest,
                 contentDescription = item.title,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
@@ -320,7 +427,8 @@ private fun HeroSpotlightBanner(
 @Composable
 private fun ContinueWatchingRow(
     items: List<WatchProgress>,
-    onClick: (WatchProgress) -> Unit
+    onClick: (WatchProgress) -> Unit,
+    onLongClick: (WatchProgress) -> Unit
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -337,29 +445,35 @@ private fun ContinueWatchingRow(
         ) {
             items(
                 items = items,
-                key = { "${it.sourceId}_${it.mediaId}_${it.seasonNumber}_${it.episodeNumber}" }
+                key = { "${it.sourceId}_${it.type.name}_${it.mediaId}_${it.seasonNumber}_${it.episodeNumber}" },
+                contentType = { "continue_watching_card" }
             ) { progress ->
                 val fraction = if (progress.durationMs > 0L) {
                     progress.positionMs.toFloat() / progress.durationMs.toFloat()
                 } else {
                     0f
                 }
-                val epBadge = if (progress.seasonNumber != null && progress.episodeNumber != null) {
-                    "S${progress.seasonNumber} E${progress.episodeNumber}"
-                } else {
-                    null
+                val epBadge = remember(progress.seasonNumber, progress.episodeNumber) {
+                    if (progress.seasonNumber != null && progress.episodeNumber != null) {
+                        "S${progress.seasonNumber} E${progress.episodeNumber}"
+                    } else {
+                        null
+                    }
                 }
-                val card = MediaCard(
-                    id = progress.mediaId,
-                    sourceId = progress.sourceId,
-                    title = progress.title,
-                    posterUrl = progress.posterUrl,
-                    type = progress.type,
-                    subtitle = epBadge
-                )
+                val card = remember(progress, epBadge) {
+                    MediaCard(
+                        id = progress.mediaId,
+                        sourceId = progress.sourceId,
+                        title = progress.title,
+                        posterUrl = progress.posterUrl,
+                        type = progress.type,
+                        subtitle = epBadge
+                    )
+                }
                 TvPosterCard(
                     item = card,
                     onClick = { onClick(progress) },
+                    onLongClick = { onLongClick(progress) },
                     progressFraction = fraction,
                     badgeText = epBadge
                 )

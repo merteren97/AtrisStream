@@ -134,7 +134,11 @@ fun BrowseScreen(
                     verticalArrangement = Arrangement.spacedBy(20.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    items(state.items, key = { "${it.sourceId}_${it.id}" }) { card ->
+                    items(
+                        items = state.items,
+                        key = { "${it.sourceId}_${it.type.name}_${it.id}" },
+                        contentType = { "media_card" }
+                    ) { card ->
                         TvPosterCard(
                             item = card,
                             onClick = { onOpenDetails(card.sourceId, card.id, card.type) }

@@ -10,6 +10,7 @@ import com.atrishub.atrisstream.core.model.MediaType
 import com.atrishub.atrisstream.core.model.WatchProgress
 import com.atrishub.atrisstream.core.model.WatchlistItem
 import com.atrishub.atrisstream.core.sourceengine.SourceManager
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -22,7 +23,8 @@ data class DetailsUiState(
     val selectedSeasonNumber: Int = 1,
     val episodes: List<Episode> = emptyList(),
     val isLoadingEpisodes: Boolean = false,
-    val watchProgress: WatchProgress? = null,
+    val latestProgress: WatchProgress? = null,
+    val episodeProgressMap: Map<Pair<Int, Int>, WatchProgress> = emptyMap(),
     val isLoading: Boolean = true,
     val error: String? = null
 )
@@ -52,18 +54,23 @@ class DetailsViewModel(
                 val provider = sourceManager.getProvider(sourceId)
                     ?: error("Source '$sourceId' not found or disabled")
                 val details = provider.getDetails(mediaId, mediaType)
-                val progress = repository.getWatchProgress(sourceId, mediaId)
-                details to progress
-            }.onSuccess { (details, progress) ->
-                val firstSeason = details.seasons.firstOrNull()
-                val initialSeasonNum = firstSeason?.seasonNumber ?: 1
-                val initialEpisodes = firstSeason?.episodes.orEmpty()
+                val latestProgress = repository.getLatestProgressForMedia(sourceId, mediaId)
+                val episodeProgressMap = repository.getAllProgressForMedia(sourceId, mediaId)
+                    .associateBy { (it.seasonNumber ?: -1) to (it.episodeNumber ?: -1) }
+                Triple(details, latestProgress, episodeProgressMap)
+            }.onSuccess { (details, latestProgress, episodeProgressMap) ->
+                val targetSeason = latestProgress?.seasonNumber?.let { s ->
+                    details.seasons.firstOrNull { it.seasonNumber == s }
+                } ?: details.seasons.firstOrNull()
+                val initialSeasonNum = targetSeason?.seasonNumber ?: 1
+                val initialEpisodes = targetSeason?.episodes.orEmpty()
 
                 _uiState.value = _uiState.value.copy(
                     details = details,
                     selectedSeasonNumber = initialSeasonNum,
                     episodes = initialEpisodes,
-                    watchProgress = progress,
+                    latestProgress = latestProgress,
+                    episodeProgressMap = episodeProgressMap,
                     isLoading = false,
                     error = null
                 )
@@ -74,10 +81,29 @@ class DetailsViewModel(
                     loadEpisodesForSeason(initialSeasonNum)
                 }
             }.onFailure { throwable ->
+                if (throwable is CancellationException) throw throwable
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
                     error = throwable.message ?: "Failed to load details"
                 )
+            }
+        }
+    }
+
+    fun refreshWatchProgress() {
+        viewModelScope.launch {
+            runCatching {
+                val latestProgress = repository.getLatestProgressForMedia(sourceId, mediaId)
+                val episodeProgressMap = repository.getAllProgressForMedia(sourceId, mediaId)
+                    .associateBy { (it.seasonNumber ?: -1) to (it.episodeNumber ?: -1) }
+                latestProgress to episodeProgressMap
+            }.onSuccess { (latestProgress, episodeProgressMap) ->
+                _uiState.value = _uiState.value.copy(
+                    latestProgress = latestProgress,
+                    episodeProgressMap = episodeProgressMap
+                )
+            }.onFailure { throwable ->
+                if (throwable is CancellationException) throw throwable
             }
         }
     }
@@ -106,7 +132,8 @@ class DetailsViewModel(
                     episodes = episodes,
                     isLoadingEpisodes = false
                 )
-            }.onFailure {
+            }.onFailure { throwable ->
+                if (throwable is CancellationException) throw throwable
                 _uiState.value = _uiState.value.copy(
                     episodes = emptyList(),
                     isLoadingEpisodes = false

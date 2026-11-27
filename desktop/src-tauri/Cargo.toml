@@ -1,0 +1,41 @@
+[workspace]
+members = [
+    ".",
+    "crates/atris-core",
+    "crates/atris-storage",
+    "crates/atris-sources",
+    "crates/atris-proxy",
+    "crates/atris-sync",
+]
+resolver = "2"
+
+[package]
+name = "atris-stream-desktop"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "atris_stream_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+libloading = "0.8"
+raw-window-handle = "0.6"
+atris-core = { path = "crates/atris-core" }
+atris-storage = { path = "crates/atris-storage" }
+atris-sources = { path = "crates/atris-sources" }
+atris-proxy = { path = "crates/atris-proxy" }
+atris-sync = { path = "crates/atris-sync" }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
+opt-level = "s"

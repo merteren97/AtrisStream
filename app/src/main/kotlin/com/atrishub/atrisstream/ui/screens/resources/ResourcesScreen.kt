@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.CircularProgressIndicator
@@ -55,6 +56,7 @@ fun ResourcesScreen(viewModel: ResourcesViewModel) {
     val isLanRunning by viewModel.isLanServerRunning.collectAsState()
     val lanUrl by viewModel.lanServerUrl.collectAsState()
     val lanStatus by viewModel.lanLastStatus.collectAsState()
+    val lanPin by viewModel.lanPairingPin.collectAsState()
 
     var showAddDialog by remember { mutableStateOf(false) }
 
@@ -99,8 +101,10 @@ fun ResourcesScreen(viewModel: ResourcesViewModel) {
             LanPasteCard(
                 isRunning = isLanRunning,
                 serverUrl = lanUrl,
+                pairingPin = lanPin,
                 lastStatus = lanStatus,
-                onToggle = { viewModel.toggleLanServer() }
+                onToggle = { viewModel.toggleLanServer() },
+                onRegeneratePin = { viewModel.regenerateLanPin() }
             )
         }
 
@@ -135,8 +139,10 @@ fun ResourcesScreen(viewModel: ResourcesViewModel) {
 private fun LanPasteCard(
     isRunning: Boolean,
     serverUrl: String?,
+    pairingPin: String?,
     lastStatus: String?,
-    onToggle: () -> Unit
+    onToggle: () -> Unit,
+    onRegeneratePin: () -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -180,6 +186,20 @@ private fun LanPasteCard(
                 fontSize = 14.sp,
                 fontWeight = FontWeight.SemiBold
             )
+            if (isRunning && pairingPin != null) {
+                Text(
+                    text = stringResource(R.string.resources_lan_pin, pairingPin),
+                    color = AtrisColors.Success,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.5.sp
+                )
+                Text(
+                    text = stringResource(R.string.resources_lan_pin_hint),
+                    color = AtrisColors.TextSecondary,
+                    fontSize = 12.sp
+                )
+            }
             lastStatus?.let { msg ->
                 Text(
                     text = msg,
@@ -189,13 +209,22 @@ private fun LanPasteCard(
             }
         }
 
-        TvFocusButton(
-            text = stringResource(
-                if (isRunning) R.string.resources_lan_stop else R.string.resources_lan_start
-            ),
-            isPrimary = !isRunning,
-            onClick = onToggle
-        )
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (isRunning) {
+                TvFocusButton(
+                    text = stringResource(R.string.resources_lan_new_pin),
+                    icon = Icons.Default.Refresh,
+                    onClick = onRegeneratePin
+                )
+            }
+            TvFocusButton(
+                text = stringResource(
+                    if (isRunning) R.string.resources_lan_stop else R.string.resources_lan_start
+                ),
+                isPrimary = !isRunning,
+                onClick = onToggle
+            )
+        }
     }
 }
 

@@ -55,10 +55,11 @@ fun AtrisApp(container: AppContainer) {
                 currentRoute = currentRoute,
                 onNavigate = { route ->
                     if (currentRoute != route) {
+                        val keepState = !container.isLowRamDevice
                         navController.navigate(route) {
-                            popUpTo(Screen.Home.route) { saveState = true }
+                            popUpTo(Screen.Home.route) { saveState = keepState }
                             launchSingleTop = true
-                            restoreState = true
+                            restoreState = keepState
                         }
                     }
                 }
@@ -177,7 +178,7 @@ fun AtrisApp(container: AppContainer) {
                     }.getOrDefault(MediaType.MOVIE)
 
                     val vm: DetailsViewModel = viewModel(
-                        key = "details_${sourceId}_$mediaId",
+                        key = "details_${sourceId}_${type.name}_$mediaId",
                         factory = DetailsViewModel.Factory(
                             sourceId = sourceId,
                             mediaId = mediaId,
@@ -235,7 +236,8 @@ fun AtrisApp(container: AppContainer) {
                             initialArgs = launchArgs,
                             sourceManager = container.sourceManager,
                             repository = container.repository,
-                            preferencesRepository = container.preferencesRepository
+                            preferencesRepository = container.preferencesRepository,
+                            appScope = container.appScope
                         )
                     )
                     PlayerRoute(
