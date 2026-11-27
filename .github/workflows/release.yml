@@ -1,46 +1,85 @@
 name: Release (Android TV & Desktop)
 
 on:
-  release:
-    types: [ published ]
   workflow_dispatch:
     inputs:
-      tag:
-        description: "Existing release tag to attach artifacts to (leave empty to upload as workflow artifacts only)"
+      version:
+        description: "Release version (SemVer, e.g. 0.1.0)"
+        required: true
+        default: "0.1.0"
+        type: string
+      prerelease:
+        description: "Mark GitHub Release as pre-release"
         required: false
-        default: ""
+        default: false
+        type: boolean
+      draft:
+        description: "Create GitHub Release as draft"
+        required: false
+        default: false
+        type: boolean
+  release:
+    types: [ published ]
 
 permissions:
   contents: write
 
 jobs:
-  resolve-meta:
+  prepare-release:
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.meta.outputs.tag }}
       version: ${{ steps.meta.outputs.version }}
-      upload_release: ${{ steps.meta.outputs.upload_release }}
     steps:
-      - id: meta
-        shell: bash
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Resolve version and ensure GitHub Release exists
+        id: meta
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
+
           if [ "${{ github.event_name }}" = "release" ]; then
-            TAG="${{ github.event.release.tag_name }}"
-            UPLOAD="true"
-          elif [ -n "${{ inputs.tag }}" ]; then
-            TAG="${{ inputs.tag }}"
-            UPLOAD="true"
+            RAW="${{ github.event.release.tag_name }}"
           else
-            TAG="v0.1.0-manual-${{ github.run_number }}"
-            UPLOAD="false"
+            RAW="${{ inputs.version }}"
           fi
-          VERSION="${TAG#v}"
+
+          VERSION="${RAW#v}"
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid SemVer version: '$RAW' (expected e.g. 0.1.0 or v0.1.0)"
+            exit 1
+          fi
+
+          TAG="v${VERSION}"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "upload_release=${UPLOAD}" >> "$GITHUB_OUTPUT"
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            if gh release view "$TAG" >/dev/null 2>&1; then
+              echo "Release $TAG already exists; build artifacts will be uploaded to it."
+            else
+              ARGS=(
+                "$TAG"
+                --target "${{ github.sha }}"
+                --title "AtrisStream ${TAG}"
+                --generate-notes
+              )
+              if [ "${{ inputs.prerelease }}" = "true" ]; then
+                ARGS+=(--prerelease)
+              fi
+              if [ "${{ inputs.draft }}" = "true" ]; then
+                ARGS+=(--draft)
+              fi
+              gh release create "${ARGS[@]}"
+              echo "Created GitHub Release $TAG"
+            fi
+          fi
 
   build-android:
-    needs: resolve-meta
+    needs: prepare-release
     runs-on: ubuntu-latest
 
     steps:
@@ -77,7 +116,7 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           ./gradlew :app:assembleRelease \
-            -PappVersionName="${{ needs.resolve-meta.outputs.version }}" \
+            -PappVersionName="${{ needs.prepare-release.outputs.version }}" \
             -PappVersionCode="${{ github.run_number }}" \
             --stacktrace
 
@@ -85,24 +124,23 @@ jobs:
         run: |
           mkdir -p release-assets
           APK_SRC=$(ls app/build/outputs/apk/release/*.apk | head -n 1)
-          cp "$APK_SRC" "release-assets/AtrisStream-AndroidTV-${{ needs.resolve-meta.outputs.tag }}.apk"
+          cp "$APK_SRC" "release-assets/AtrisStream-AndroidTV-${{ needs.prepare-release.outputs.tag }}.apk"
           ls -lh release-assets/
 
       - name: Upload Android TV APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: AtrisStream-AndroidTV-${{ needs.resolve-meta.outputs.tag }}
+          name: AtrisStream-AndroidTV-${{ needs.prepare-release.outputs.tag }}
           path: release-assets/*.apk
 
       - name: Attach Android TV APK to GitHub Release
-        if: needs.resolve-meta.outputs.upload_release == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload "${{ needs.resolve-meta.outputs.tag }}" release-assets/*.apk --clobber
+          gh release upload "${{ needs.prepare-release.outputs.tag }}" release-assets/*.apk --clobber
 
   build-desktop:
-    needs: resolve-meta
+    needs: prepare-release
     strategy:
       fail-fast: false
       matrix:
@@ -184,17 +222,21 @@ jobs:
         working-directory: desktop
         shell: pwsh
         run: |
+          $cfg = @{ version = "${{ needs.prepare-release.outputs.version }}" }
           if (Test-Path "src-tauri/lib/libmpv-2.dll") {
-            npx tauri build --target ${{ matrix.target }} --config '{"bundle":{"resources":["lib/libmpv-2.dll"]}}'
-          } else {
-            npx tauri build --target ${{ matrix.target }}
+            $cfg.bundle = @{ resources = @("lib/libmpv-2.dll") }
           }
+          $cfgPath = Join-Path (Get-Location) "src-tauri/tauri.release.conf.json"
+          $cfg | ConvertTo-Json -Depth 5 | Set-Content -Path $cfgPath -Encoding utf8NoBOM
+          npx tauri build --target ${{ matrix.target }} --config $cfgPath
 
       - name: Build Tauri Desktop Bundle (macOS / Linux)
         if: matrix.platform != 'windows-latest'
         working-directory: desktop
         run: |
-          npx tauri build --target ${{ matrix.target }}
+          CFG_PATH="$(pwd)/src-tauri/tauri.release.conf.json"
+          printf '{"version":"%s"}\n' "${{ needs.prepare-release.outputs.version }}" > "$CFG_PATH"
+          npx tauri build --target ${{ matrix.target }} --config "$CFG_PATH"
 
       - name: Collect Desktop installers
         shell: bash
@@ -213,16 +255,15 @@ jobs:
       - name: Upload Desktop workflow artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: AtrisStream-Desktop-${{ matrix.label }}-${{ needs.resolve-meta.outputs.tag }}
+          name: AtrisStream-Desktop-${{ matrix.label }}-${{ needs.prepare-release.outputs.tag }}
           path: release-assets/*
 
       - name: Attach Desktop installers to GitHub Release
-        if: needs.resolve-meta.outputs.upload_release == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           shopt -s nullglob
           FILES=(release-assets/*)
           if [ ${#FILES[@]} -gt 0 ]; then
-            gh release upload "${{ needs.resolve-meta.outputs.tag }}" "${FILES[@]}" --clobber
+            gh release upload "${{ needs.prepare-release.outputs.tag }}" "${FILES[@]}" --clobber
           fi
