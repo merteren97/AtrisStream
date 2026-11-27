@@ -15,6 +15,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -60,16 +61,22 @@ fun WatchlistScreen(
                 verticalArrangement = Arrangement.spacedBy(20.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
-                items(items, key = { "${it.sourceId}_${it.mediaId}" }) { item ->
-                    val card = MediaCard(
-                        id = item.mediaId,
-                        sourceId = item.sourceId,
-                        title = item.title,
-                        posterUrl = item.posterUrl,
-                        type = item.type,
-                        year = item.year,
-                        rating = item.rating
-                    )
+                items(
+                    items = items,
+                    key = { "${it.sourceId}_${it.type.name}_${it.mediaId}" },
+                    contentType = { "watchlist_card" }
+                ) { item ->
+                    val card = remember(item) {
+                        MediaCard(
+                            id = item.mediaId,
+                            sourceId = item.sourceId,
+                            title = item.title,
+                            posterUrl = item.posterUrl,
+                            type = item.type,
+                            year = item.year,
+                            rating = item.rating
+                        )
+                    }
                     TvPosterCard(
                         item = card,
                         onClick = { onOpenDetails(item.sourceId, item.mediaId, item.type) }

@@ -46,6 +46,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
@@ -76,7 +79,8 @@ fun AtrisPlayerScreen(
     onProgressUpdate: (positionMs: Long, durationMs: Long) -> Unit,
     onRetryLoadStreams: () -> Unit,
     onNextEpisode: () -> Unit = {},
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onPlaybackEnded: (positionMs: Long, durationMs: Long) -> Unit = { _, _ -> }
 ) {
     val context = LocalContext.current
     val playerState = remember(okHttpClient) {
@@ -84,7 +88,10 @@ fun AtrisPlayerScreen(
     }
 
     val latestProgressCallback by rememberUpdatedState(onProgressUpdate)
+    val latestOnPlaybackEnded by rememberUpdatedState(onPlaybackEnded)
     val latestOnBack by rememberUpdatedState(onBack)
+    val latestIsLoading by rememberUpdatedState(isLoadingStreams)
+    val latestStreamResult by rememberUpdatedState(streamResult)
 
     var isHudVisible by remember { mutableStateOf(true) }
     var activeDrawer by remember { mutableStateOf(PlayerDrawerType.NONE) }
@@ -99,7 +106,7 @@ fun AtrisPlayerScreen(
         lastInteractionTick++
     }
 
-    // Load streams when streamResult arrives or changes
+    // Load streams when streamResult arrives or clear playback when switching episodes
     LaunchedEffect(streamResult) {
         if (streamResult != null) {
             playerState.loadStreamResult(
@@ -108,6 +115,8 @@ fun AtrisPlayerScreen(
                 preferredQuality = preferredQuality,
                 preferredSubtitleLang = preferredSubtitleLang
             )
+        } else {
+            playerState.clearPlayback()
         }
     }
 
@@ -142,18 +151,51 @@ fun AtrisPlayerScreen(
         while (true) {
             playerState.syncPositions()
             tickCount++
-            if (tickCount % 10 == 0 && playerState.durationMs > 0L) {
+            if (tickCount % 10 == 0 && !latestIsLoading && latestStreamResult != null && playerState.durationMs > 0L) {
                 latestProgressCallback(playerState.currentPositionMs, playerState.durationMs)
             }
             delay(500L)
         }
     }
 
-    // Report final progress & release ExoPlayer on dispose
-    DisposableEffect(playerState) {
+    // Lifecycle handling for Android TV background/foreground transitions
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, playerState) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_PAUSE -> {
+                    playerState.syncPositions()
+                    playerState.player.pause()
+                    if (!latestIsLoading && latestStreamResult != null && playerState.durationMs > 0L) {
+                        latestProgressCallback(playerState.currentPositionMs, playerState.durationMs)
+                    }
+                }
+                Lifecycle.Event.ON_STOP -> {
+                    playerState.stopForBackground()
+                }
+                Lifecycle.Event.ON_START -> {
+                    playerState.resumeFromBackground()
+                }
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    // Wire playback-ended callback, report final progress & release ExoPlayer on dispose
+    DisposableEffect(playerState) {
+        playerState.onPlaybackEnded = { pos, dur ->
+            if (!latestIsLoading && latestStreamResult != null) {
+                latestOnPlaybackEnded(pos, dur)
+            }
+        }
+        onDispose {
+            playerState.onPlaybackEnded = null
             playerState.syncPositions()
-            if (playerState.durationMs > 0L) {
+            if (!latestIsLoading && latestStreamResult != null && playerState.durationMs > 0L) {
                 latestProgressCallback(playerState.currentPositionMs, playerState.durationMs)
             }
             playerState.release()
@@ -241,6 +283,16 @@ fun AtrisPlayerScreen(
             }
     ) {
         // Video surface
+        val captionStyle = remember(subtitleAppearance) {
+            CaptionStyleCompat(
+                subtitleAppearance.textColorArgb.toInt(),
+                subtitleAppearance.backgroundColorArgb.toInt(),
+                AndroidColor.TRANSPARENT,
+                subtitleAppearance.edgeType,
+                AndroidColor.BLACK,
+                null
+            )
+        }
         AndroidView(
             factory = { ctx ->
                 PlayerView(ctx).apply {
@@ -254,17 +306,9 @@ fun AtrisPlayerScreen(
                 if (playerView.player !== playerState.player) {
                     playerView.player = playerState.player
                 }
+                playerView.keepScreenOn = playerState.isPlaying
                 playerView.subtitleView?.let { subView ->
-                    subView.setStyle(
-                        CaptionStyleCompat(
-                            subtitleAppearance.textColorArgb.toInt(),
-                            subtitleAppearance.backgroundColorArgb.toInt(),
-                            AndroidColor.TRANSPARENT,
-                            subtitleAppearance.edgeType,
-                            AndroidColor.BLACK,
-                            null
-                        )
-                    )
+                    subView.setStyle(captionStyle)
                     subView.setFixedTextSize(TypedValue.COMPLEX_UNIT_SP, subtitleAppearance.fontSizeSp)
                 }
             },

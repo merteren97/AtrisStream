@@ -27,13 +27,16 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -46,21 +49,36 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import coil.size.Precision
 import com.atrishub.atrisstream.R
 import com.atrishub.atrisstream.core.model.Episode
 import com.atrishub.atrisstream.core.model.MediaDetails
 import com.atrishub.atrisstream.core.model.MediaType
 import com.atrishub.atrisstream.core.model.PlayerLaunchArgs
+import com.atrishub.atrisstream.core.model.WatchProgress
+import com.atrishub.atrisstream.core.model.WatchProgressPolicy
 import com.atrishub.atrisstream.ui.theme.AtrisColors
 import com.atrishub.atrisstream.ui.theme.TvErrorBanner
 import com.atrishub.atrisstream.ui.theme.TvFilterChip
 import com.atrishub.atrisstream.ui.theme.TvFocusButton
+
+private data class MainCtaTarget(
+    val label: String,
+    val seasonNumber: Int?,
+    val episodeNumber: Int?,
+    val resumePositionMs: Long
+)
 
 @Composable
 fun DetailsScreen(
@@ -70,6 +88,17 @@ fun DetailsScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     val isSaved by viewModel.isSavedToWatchlist.collectAsState()
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    DisposableEffect(lifecycleOwner, viewModel) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.refreshWatchProgress()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     Box(
         modifier = Modifier
@@ -92,28 +121,49 @@ fun DetailsScreen(
             }
             state.details != null -> {
                 val details = state.details!!
+                val playLabel = stringResource(R.string.action_play)
+                val resumeLabel = stringResource(R.string.action_resume)
+                val mainCta = remember(details, state.latestProgress, state.episodes, state.episodeProgressMap, state.selectedSeasonNumber, playLabel, resumeLabel) {
+                    resolveMainCta(details, state, playLabel, resumeLabel)
+                }
+
                 DetailsContent(
                     details = details,
                     state = state,
                     isSaved = isSaved,
+                    mainCta = mainCta,
                     onToggleWatchlist = { viewModel.toggleWatchlist() },
                     onSelectSeason = { viewModel.selectSeason(it) },
                     onPlayMain = {
-                        val firstEp = state.episodes.firstOrNull()
+                        val title = if (mainCta.seasonNumber != null && mainCta.episodeNumber != null) {
+                            "${details.title} • S${mainCta.seasonNumber}E${mainCta.episodeNumber}"
+                        } else {
+                            details.title
+                        }
                         onPlay(
                             PlayerLaunchArgs(
                                 sourceId = details.sourceId,
                                 mediaId = details.id,
                                 type = details.type,
-                                title = details.title,
+                                title = title,
                                 posterUrl = details.posterUrl,
-                                seasonNumber = if (details.type == MediaType.MOVIE) null else (firstEp?.seasonNumber ?: state.selectedSeasonNumber),
-                                episodeNumber = if (details.type == MediaType.MOVIE) null else (firstEp?.episodeNumber ?: 1),
-                                resumePositionMs = state.watchProgress?.positionMs ?: 0L
+                                seasonNumber = mainCta.seasonNumber,
+                                episodeNumber = mainCta.episodeNumber,
+                                resumePositionMs = mainCta.resumePositionMs
                             )
                         )
                     },
                     onPlayEpisode = { episode ->
+                        val epProgress = state.episodeProgressMap[episode.seasonNumber to episode.episodeNumber]
+                        val resumeMs = if (
+                            epProgress != null &&
+                            !epProgress.isCompleted &&
+                            epProgress.positionMs >= WatchProgressPolicy.MIN_RESUME_POSITION_MS
+                        ) {
+                            epProgress.positionMs
+                        } else {
+                            0L
+                        }
                         onPlay(
                             PlayerLaunchArgs(
                                 sourceId = details.sourceId,
@@ -123,7 +173,7 @@ fun DetailsScreen(
                                 posterUrl = episode.thumbnailUrl ?: details.posterUrl,
                                 seasonNumber = episode.seasonNumber,
                                 episodeNumber = episode.episodeNumber,
-                                resumePositionMs = 0L
+                                resumePositionMs = resumeMs
                             )
                         )
                     },
@@ -134,23 +184,90 @@ fun DetailsScreen(
     }
 }
 
+private fun resolveMainCta(
+    details: MediaDetails,
+    state: DetailsUiState,
+    playLabel: String,
+    resumeLabel: String
+): MainCtaTarget {
+    val latest = state.latestProgress
+    if (details.type == MediaType.MOVIE || details.type == MediaType.LIVE) {
+        val canResume = latest != null &&
+            !latest.isCompleted &&
+            latest.positionMs >= WatchProgressPolicy.MIN_RESUME_POSITION_MS
+        return MainCtaTarget(
+            label = if (canResume) resumeLabel else playLabel,
+            seasonNumber = null,
+            episodeNumber = null,
+            resumePositionMs = if (canResume) latest!!.positionMs else 0L
+        )
+    }
+
+    val firstEp = state.episodes.firstOrNull()
+    if (latest != null && !latest.isCompleted) {
+        val s = latest.seasonNumber ?: firstEp?.seasonNumber ?: state.selectedSeasonNumber
+        val e = latest.episodeNumber ?: firstEp?.episodeNumber ?: 1
+        val canResume = latest.positionMs >= WatchProgressPolicy.MIN_RESUME_POSITION_MS
+        return MainCtaTarget(
+            label = if (canResume) "S$s E$e • $resumeLabel" else "S$s E$e • $playLabel",
+            seasonNumber = s,
+            episodeNumber = e,
+            resumePositionMs = if (canResume) latest.positionMs else 0L
+        )
+    }
+
+    if (latest != null && latest.isCompleted) {
+        val lastS = latest.seasonNumber ?: state.selectedSeasonNumber
+        val lastE = latest.episodeNumber ?: 0
+        val nextEp = state.episodes.firstOrNull { ep ->
+            val isAfter = ep.seasonNumber > lastS || (ep.seasonNumber == lastS && ep.episodeNumber > lastE)
+            val epDone = state.episodeProgressMap[ep.seasonNumber to ep.episodeNumber]?.isCompleted == true
+            isAfter && !epDone
+        }
+        if (nextEp != null) {
+            return MainCtaTarget(
+                label = "S${nextEp.seasonNumber} E${nextEp.episodeNumber} • $playLabel",
+                seasonNumber = nextEp.seasonNumber,
+                episodeNumber = nextEp.episodeNumber,
+                resumePositionMs = 0L
+            )
+        }
+    }
+
+    return MainCtaTarget(
+        label = playLabel,
+        seasonNumber = firstEp?.seasonNumber ?: state.selectedSeasonNumber,
+        episodeNumber = firstEp?.episodeNumber ?: 1,
+        resumePositionMs = 0L
+    )
+}
+
 @Composable
 private fun DetailsContent(
     details: MediaDetails,
     state: DetailsUiState,
     isSaved: Boolean,
+    mainCta: MainCtaTarget,
     onToggleWatchlist: () -> Unit,
     onSelectSeason: (Int) -> Unit,
     onPlayMain: () -> Unit,
     onPlayEpisode: (Episode) -> Unit,
     onBack: () -> Unit
 ) {
+    val context = LocalContext.current
     Box(modifier = Modifier.fillMaxSize()) {
         // Full-bleed backdrop
         val backdrop = details.backdropUrl ?: details.posterUrl
         if (!backdrop.isNullOrBlank()) {
+            val backdropRequest = remember(backdrop) {
+                ImageRequest.Builder(context)
+                    .data(backdrop)
+                    .size(960, 540)
+                    .precision(Precision.INEXACT)
+                    .build()
+            }
             AsyncImage(
-                model = backdrop,
+                model = backdropRequest,
                 contentDescription = details.title,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
@@ -193,9 +310,17 @@ private fun DetailsContent(
                     horizontalArrangement = Arrangement.spacedBy(24.dp),
                     verticalAlignment = Alignment.Top
                 ) {
-                    if (!details.posterUrl.isNullOrBlank()) {
+                    val posterUrl = details.posterUrl
+                    if (!posterUrl.isNullOrBlank()) {
+                        val posterRequest = remember(posterUrl) {
+                            ImageRequest.Builder(context)
+                                .data(posterUrl)
+                                .size(260, 390)
+                                .precision(Precision.INEXACT)
+                                .build()
+                        }
                         AsyncImage(
-                            model = details.posterUrl,
+                            model = posterRequest,
                             contentDescription = details.title,
                             contentScale = ContentScale.Crop,
                             modifier = Modifier
@@ -274,9 +399,8 @@ private fun DetailsContent(
                         Spacer(modifier = Modifier.height(6.dp))
 
                         Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                            val hasResume = (state.watchProgress?.positionMs ?: 0L) > 5_000L
                             TvFocusButton(
-                                text = stringResource(if (hasResume) R.string.action_resume else R.string.action_play),
+                                text = mainCta.label,
                                 icon = Icons.Default.PlayArrow,
                                 isPrimary = true,
                                 onClick = onPlayMain
@@ -330,10 +454,13 @@ private fun DetailsContent(
                 } else {
                     items(
                         items = state.episodes,
-                        key = { "${it.seasonNumber}_${it.episodeNumber}_${it.id}" }
+                        key = { "${it.seasonNumber}_${it.episodeNumber}_${it.id}" },
+                        contentType = { "episode_row" }
                     ) { episode ->
+                        val epProgress = state.episodeProgressMap[episode.seasonNumber to episode.episodeNumber]
                         EpisodeRowCard(
                             episode = episode,
+                            progress = epProgress,
                             onClick = { onPlayEpisode(episode) }
                         )
                     }
@@ -346,8 +473,10 @@ private fun DetailsContent(
 @Composable
 private fun EpisodeRowCard(
     episode: Episode,
+    progress: WatchProgress?,
     onClick: () -> Unit
 ) {
+    val context = LocalContext.current
     var isFocused by remember { mutableStateOf(false) }
     val bg by animateColorAsState(
         targetValue = if (isFocused) AtrisColors.ElevatedCard else AtrisColors.Surface,
@@ -381,9 +510,17 @@ private fun EpisodeRowCard(
                     .background(AtrisColors.ElevatedCard),
                 contentAlignment = Alignment.Center
             ) {
-                if (!episode.thumbnailUrl.isNullOrBlank()) {
+                val thumbUrl = episode.thumbnailUrl
+                if (!thumbUrl.isNullOrBlank()) {
+                    val thumbRequest = remember(thumbUrl) {
+                        ImageRequest.Builder(context)
+                            .data(thumbUrl)
+                            .size(400, 225)
+                            .precision(Precision.INEXACT)
+                            .build()
+                    }
                     AsyncImage(
-                        model = episode.thumbnailUrl,
+                        model = thumbRequest,
                         contentDescription = episode.title,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize()
@@ -394,6 +531,22 @@ private fun EpisodeRowCard(
                         contentDescription = null,
                         tint = if (isFocused) AtrisColors.AccentCyan else AtrisColors.TextSecondary,
                         modifier = Modifier.size(28.dp)
+                    )
+                }
+
+                if (progress != null && !progress.isCompleted &&
+                    progress.durationMs > 0L &&
+                    progress.positionMs >= WatchProgressPolicy.MIN_RESUME_POSITION_MS
+                ) {
+                    val fraction = (progress.positionMs.toFloat() / progress.durationMs.toFloat()).coerceIn(0f, 1f)
+                    LinearProgressIndicator(
+                        progress = { fraction },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(3.dp)
+                            .align(Alignment.BottomCenter),
+                        color = AtrisColors.AccentCyan,
+                        trackColor = Color.White.copy(alpha = 0.25f)
                     )
                 }
             }
@@ -418,6 +571,15 @@ private fun EpisodeRowCard(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
+            }
+
+            if (progress?.isCompleted == true) {
+                Icon(
+                    imageVector = Icons.Default.CheckCircle,
+                    contentDescription = null,
+                    tint = AtrisColors.AccentCyan,
+                    modifier = Modifier.size(20.dp)
+                )
             }
 
             episode.runtimeMinutes?.let { min ->

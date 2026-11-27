@@ -27,6 +27,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -133,8 +134,10 @@ fun SearchScreen(
                 }
             }
             else -> {
-                val allItems = state.groups.flatMap { group ->
-                    group.items.map { it to group.sourceName }
+                val allItems = remember(state.groups) {
+                    state.groups.flatMap { group ->
+                        group.items.map { it to group.sourceName }
+                    }.distinctBy { "${it.first.sourceId}_${it.first.type.name}_${it.first.id}" }
                 }
                 LazyVerticalGrid(
                     columns = GridCells.Adaptive(minSize = 148.dp),
@@ -143,7 +146,11 @@ fun SearchScreen(
                     verticalArrangement = Arrangement.spacedBy(20.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    items(allItems, key = { "${it.first.sourceId}_${it.first.id}" }) { (card, sourceName) ->
+                    items(
+                        items = allItems,
+                        key = { "${it.first.sourceId}_${it.first.type.name}_${it.first.id}" },
+                        contentType = { "search_card" }
+                    ) { (card, sourceName) ->
                         TvPosterCard(
                             item = card,
                             badgeText = if (state.groups.size > 1) sourceName else null,

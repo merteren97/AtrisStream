@@ -31,6 +31,8 @@
     <string name="home_active_source">Aktif Kaynak</string>
     <string name="home_featured">Öne Çıkan</string>
     <string name="home_empty">Bu kaynaktan içerik bulunamadı.</string>
+    <string name="action_remove_continue_watching">Devam Et\'ten Kaldır</string>
+    <string name="action_mark_watched">İzlendi İşaretle</string>
 
     <!-- Browse -->
     <string name="browse_movies_title">Filmler</string>
@@ -80,6 +82,9 @@
     <string name="resources_lan_stop">Sunucuyu Durdur</string>
     <string name="resources_lan_running">Çalışıyor: %1$s</string>
     <string name="resources_lan_stopped">Sunucu durduruldu</string>
+    <string name="resources_lan_pin">Eşleştirme PIN: %1$s</string>
+    <string name="resources_lan_pin_hint">Wi-Fi üzerinden eşleştirmek ve senkronize etmek için bu PIN\'i AtrisStream Desktop\'a girin.</string>
+    <string name="resources_lan_new_pin">Yeni PIN</string>
 
     <!-- Settings & About -->
     <string name="settings_title">Ayarlar</string>

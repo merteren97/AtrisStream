@@ -1,12 +1,10 @@
 package com.atrishub.atrisstream
 
 import android.app.Application
+import android.content.ComponentCallbacks2
 import coil.ImageLoader
 import coil.ImageLoaderFactory
 import com.atrishub.atrisstream.di.AppContainer
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 /**
@@ -17,13 +15,23 @@ class AtrisApplication : Application(), ImageLoaderFactory {
     lateinit var container: AppContainer
         private set
 
-    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this)
-        appScope.launch {
+        container.appScope.launch {
             container.sourceManager.initialize()
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (::container.isInitialized &&
+            (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW || level == ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN)
+        ) {
+            container.imageLoader.memoryCache?.clear()
+            container.networkClient.baseClient.connectionPool.evictAll()
+            container.sourceManager.trimMemory()
         }
     }
 

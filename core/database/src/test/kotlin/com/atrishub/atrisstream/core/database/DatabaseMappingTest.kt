@@ -56,7 +56,7 @@ class DatabaseMappingTest {
 
     @Test
     fun `watch progress round-trips between model and entity`() {
-        val progress = WatchProgress(
+        val inProgress = WatchProgress(
             mediaId = "breaking-bad",
             sourceId = "movy-sx",
             type = MediaType.TV,
@@ -66,12 +66,22 @@ class DatabaseMappingTest {
             episodeNumber = 5,
             positionMs = 123_456L,
             durationMs = 2_800_000L,
-            updatedAt = 1_700_000_123L
+            updatedAt = 1_700_000_123L,
+            isCompleted = false
         )
 
-        val entity = progress.toEntity()
-        assertEquals("movy-sx:breaking-bad:2:5", entity.keyId)
-        assertEquals(progress, entity.toModel())
+        val inProgressEntity = inProgress.toEntity()
+        assertEquals("movy-sx:breaking-bad:2:5", inProgressEntity.keyId)
+        assertEquals(false, inProgressEntity.isCompleted)
+        assertEquals(inProgress, inProgressEntity.toModel())
+
+        val completed = inProgress.copy(
+            positionMs = 2_600_000L,
+            isCompleted = true
+        )
+        val completedEntity = completed.toEntity()
+        assertEquals(true, completedEntity.isCompleted)
+        assertEquals(completed, completedEntity.toModel())
     }
 
     @Test

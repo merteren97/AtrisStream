@@ -7,6 +7,8 @@ import com.atrishub.atrisstream.core.model.MediaCard
 import com.atrishub.atrisstream.core.model.MediaProvider
 import com.atrishub.atrisstream.core.model.MediaType
 import com.atrishub.atrisstream.core.sourceengine.SourceManager
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -27,15 +29,20 @@ data class BrowseUiState(
 
 class BrowseViewModel(
     private val mediaType: MediaType,
-    private val sourceManager: SourceManager
+    private val observeProviders: () -> Flow<List<MediaProvider>>
 ) : ViewModel() {
+
+    constructor(
+        mediaType: MediaType,
+        sourceManager: SourceManager
+    ) : this(mediaType, sourceManager::observeEnabledProviders)
 
     private val _uiState = MutableStateFlow(BrowseUiState(mediaType = mediaType))
     val uiState: StateFlow<BrowseUiState> = _uiState.asStateFlow()
 
     init {
         viewModelScope.launch {
-            sourceManager.observeEnabledProviders().collectLatest { allProviders ->
+            observeProviders().collectLatest { allProviders ->
                 val supporting = allProviders.filter { mediaType in it.manifest.supportedTypes }
                 val candidates = supporting.ifEmpty { allProviders }
                 val current = _uiState.value.selectedSourceId
@@ -101,25 +108,34 @@ class BrowseViewModel(
             provider.browse(mediaType, page)
         }.onSuccess { paged ->
             val combined = if (append) {
-                (_uiState.value.items + paged.items).distinctBy { "${it.sourceId}_${it.id}" }
+                (_uiState.value.items + paged.items)
+                    .distinctBy { "${it.sourceId}_${it.type.name}_${it.id}" }
+                    .take(MAX_BROWSE_ITEMS)
             } else {
                 paged.items
+                    .distinctBy { "${it.sourceId}_${it.type.name}_${it.id}" }
+                    .take(MAX_BROWSE_ITEMS)
             }
             _uiState.value = _uiState.value.copy(
                 items = combined,
                 currentPage = paged.page,
-                hasNextPage = paged.hasNextPage,
+                hasNextPage = paged.hasNextPage && combined.size < MAX_BROWSE_ITEMS,
                 isLoading = false,
                 isLoadingMore = false,
                 error = null
             )
         }.onFailure { throwable ->
+            if (throwable is CancellationException) throw throwable
             _uiState.value = _uiState.value.copy(
                 isLoading = false,
                 isLoadingMore = false,
                 error = throwable.message ?: "Failed to load catalog"
             )
         }
+    }
+
+    companion object {
+        const val MAX_BROWSE_ITEMS = 200
     }
 
     class Factory(

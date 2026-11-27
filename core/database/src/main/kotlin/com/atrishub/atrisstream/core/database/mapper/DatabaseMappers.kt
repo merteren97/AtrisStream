@@ -56,7 +56,8 @@ fun WatchProgressEntity.toModel(): WatchProgress = WatchProgress(
     episodeNumber = episodeNumber,
     positionMs = positionMs,
     durationMs = durationMs,
-    updatedAt = updatedAt
+    updatedAt = updatedAt,
+    isCompleted = isCompleted
 )
 
 fun WatchProgress.toEntity(): WatchProgressEntity = WatchProgressEntity(
@@ -75,7 +76,8 @@ fun WatchProgress.toEntity(): WatchProgressEntity = WatchProgressEntity(
     episodeNumber = episodeNumber,
     positionMs = positionMs,
     durationMs = durationMs,
-    updatedAt = updatedAt
+    updatedAt = updatedAt,
+    isCompleted = isCompleted
 )
 
 fun WatchlistEntity.toModel(): WatchlistItem = WatchlistItem(

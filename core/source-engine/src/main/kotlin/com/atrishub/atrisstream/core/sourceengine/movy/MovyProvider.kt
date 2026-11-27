@@ -19,7 +19,9 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -31,7 +33,6 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
-import org.jsoup.Jsoup
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.ConcurrentHashMap
@@ -425,21 +426,24 @@ class MovyProvider(
         val seed = seedDeferred.await()
         val meta = metaDeferred.await()
 
+        val providerSemaphore = Semaphore(3)
         val providerResults = STREAM_PROVIDERS.map { provider ->
             async {
-                fetchProviderStreams(
-                    provider = provider,
-                    tmdbId = tmdbId,
-                    mediaId = mediaId,
-                    type = type,
-                    title = meta.title,
-                    year = meta.year,
-                    imdbId = meta.imdbId,
-                    totalSeasons = meta.totalSeasons,
-                    season = season ?: 1,
-                    episode = episode ?: 1,
-                    seed = seed
-                )
+                providerSemaphore.withPermit {
+                    fetchProviderStreams(
+                        provider = provider,
+                        tmdbId = tmdbId,
+                        mediaId = mediaId,
+                        type = type,
+                        title = meta.title,
+                        year = meta.year,
+                        imdbId = meta.imdbId,
+                        totalSeasons = meta.totalSeasons,
+                        season = season ?: 1,
+                        episode = episode ?: 1,
+                        seed = seed
+                    )
+                }
             }
         }.awaitAll()
 
@@ -506,6 +510,10 @@ class MovyProvider(
         return emptyList<StreamSource>() to emptyList()
     }
 
+    fun trimMemory() {
+        seedCache.clear()
+    }
+
     private suspend fun getSeed(mediaId: String, forceRefresh: Boolean): String {
         val now = System.currentTimeMillis()
         if (!forceRefresh) {
@@ -515,6 +523,7 @@ class MovyProvider(
         }
         return seedMutex.withLock {
             val againNow = System.currentTimeMillis()
+            seedCache.entries.removeIf { it.value.expiresAtMs <= againNow }
             if (!forceRefresh) {
                 seedCache[mediaId]?.let { cached ->
                     if (againNow < cached.expiresAtMs) return@withLock cached.seed
@@ -652,12 +661,12 @@ class MovyProvider(
         val rawMediaType = obj.str("mediaType")?.lowercase()
         val type = when {
             rawMediaType == "tv" || slug.startsWith("/tv/") -> MediaType.TV
-            rawMediaType == "anime" || slug.startsWith("/anime/") -> MediaType.ANIME
+            rawMediaType == "anime" || slug.startsWith("/anime/") || slug.startsWith("/tr/anime/") -> MediaType.ANIME
             else -> MediaType.MOVIE
         }
         val rawId = obj.str("id")
-        val id = if (type == MediaType.ANIME && slug.startsWith("/anime/")) {
-            slug.removePrefix("/anime/").trim('/')
+        val id = if (type == MediaType.ANIME) {
+            normalizeAnimeSlug(slug) ?: rawId ?: return null
         } else {
             rawId ?: slug.substringAfterLast('/').takeIf { it.isNotBlank() } ?: return null
         }
@@ -694,11 +703,8 @@ class MovyProvider(
 
     private fun parseAnimeCard(obj: JsonObject?): MediaCard? {
         if (obj == null) return null
-        val slug = obj.str("slug").orEmpty()
-        val id = slug.split("/").firstOrNull { it.isNotBlank() }
-            ?: obj.str("animeId")
-            ?: obj.str("id")
-            ?: return null
+        val slug = obj.str("slug")
+        val id = normalizeAnimeSlug(slug) ?: obj.str("id") ?: obj.str("animeId") ?: return null
         val title = obj.str("title") ?: return null
         return MediaCard(
             id = id,
@@ -711,7 +717,7 @@ class MovyProvider(
     }
 
     private fun extractNextData(html: String): JsonObject? {
-        val raw = Jsoup.parse(html).selectFirst("script#__NEXT_DATA__")?.data() ?: return null
+        val raw = extractNextDataJson(html) ?: return null
         return runCatching { json.parseToJsonElement(raw).jsonObject }.getOrNull()
     }
 
@@ -789,5 +795,34 @@ class MovyProvider(
             "berlin",
             "paris"
         )
+    }
+}
+
+internal fun normalizeAnimeSlug(rawSlug: String?): String? {
+    val cleaned = rawSlug
+        ?.trim()
+        ?.trimStart('/')
+        ?.removePrefix("tr/")
+        ?.removePrefix("anime/")
+        ?.substringBefore('/')
+        ?.trim()
+    return cleaned?.takeIf { it.isNotEmpty() }
+}
+
+internal fun extractNextDataJson(html: String): String? {
+    var searchFrom = 0
+    while (true) {
+        val scriptStart = html.indexOf("<script", searchFrom, ignoreCase = true)
+        if (scriptStart == -1) return null
+        val tagEnd = html.indexOf('>', scriptStart)
+        if (tagEnd == -1) return null
+        val openTag = html.substring(scriptStart, tagEnd + 1)
+        if (openTag.contains("id=\"__NEXT_DATA__\"") || openTag.contains("id='__NEXT_DATA__'")) {
+            val contentStart = tagEnd + 1
+            val scriptEnd = html.indexOf("</script>", contentStart, ignoreCase = true)
+            if (scriptEnd == -1) return null
+            return html.substring(contentStart, scriptEnd)
+        }
+        searchFrom = tagEnd + 1
     }
 }

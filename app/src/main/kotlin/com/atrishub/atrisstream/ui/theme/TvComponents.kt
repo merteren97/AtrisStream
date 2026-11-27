@@ -1,12 +1,15 @@
 package com.atrishub.atrisstream.ui.theme
 
+import android.view.KeyEvent as AndroidKeyEvent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -45,7 +48,13 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.nativeKeyCode
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -53,6 +62,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import coil.size.Precision
 import com.atrishub.atrisstream.R
 import com.atrishub.atrisstream.core.model.MediaCard
 
@@ -60,6 +71,7 @@ import com.atrishub.atrisstream.core.model.MediaCard
  * D-pad focusable poster card with 2dp cyan focus ring, scale animation,
  * gradient overlay, optional rating/year badge, and optional watch progress bar.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun TvPosterCard(
     item: MediaCard,
@@ -67,8 +79,10 @@ fun TvPosterCard(
     modifier: Modifier = Modifier,
     width: Dp = 148.dp,
     progressFraction: Float? = null,
-    badgeText: String? = null
+    badgeText: String? = null,
+    onLongClick: (() -> Unit)? = null
 ) {
+    val context = LocalContext.current
     var isFocused by remember { mutableStateOf(false) }
     val scale by animateFloatAsState(
         targetValue = if (isFocused) 1.06f else 1.0f,
@@ -81,13 +95,48 @@ fun TvPosterCard(
         label = "posterBorder"
     )
 
+    var longPressConsumed by remember { mutableStateOf(false) }
+
     Column(
         modifier = modifier
             .width(width)
             .scale(scale)
             .onFocusChanged { isFocused = it.isFocused }
             .focusable()
-            .clickable(onClick = onClick)
+            .then(
+                if (onLongClick != null) {
+                    Modifier.onPreviewKeyEvent { event ->
+                        val nativeCode = event.key.nativeKeyCode
+                        val isSelectKey = nativeCode == AndroidKeyEvent.KEYCODE_DPAD_CENTER ||
+                            nativeCode == AndroidKeyEvent.KEYCODE_ENTER
+                        when {
+                            event.type == KeyEventType.KeyDown && nativeCode == AndroidKeyEvent.KEYCODE_MENU -> {
+                                onLongClick()
+                                true
+                            }
+                            event.type == KeyEventType.KeyDown && isSelectKey &&
+                                (event.nativeKeyEvent.isLongPress || event.nativeKeyEvent.repeatCount >= 4) -> {
+                                if (!longPressConsumed) {
+                                    longPressConsumed = true
+                                    onLongClick()
+                                }
+                                true
+                            }
+                            event.type == KeyEventType.KeyUp && isSelectKey && longPressConsumed -> {
+                                longPressConsumed = false
+                                true
+                            }
+                            else -> false
+                        }
+                    }
+                } else {
+                    Modifier
+                }
+            )
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            )
     ) {
         Box(
             modifier = Modifier
@@ -101,9 +150,17 @@ fun TvPosterCard(
                     shape = RoundedCornerShape(12.dp)
                 )
         ) {
-            if (!item.posterUrl.isNullOrBlank()) {
+            val posterUrl = item.posterUrl
+            if (!posterUrl.isNullOrBlank()) {
+                val imageRequest = remember(posterUrl) {
+                    ImageRequest.Builder(context)
+                        .data(posterUrl)
+                        .size(260, 390)
+                        .precision(Precision.INEXACT)
+                        .build()
+                }
                 AsyncImage(
-                    model = item.posterUrl,
+                    model = imageRequest,
                     contentDescription = item.title,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()
@@ -331,6 +388,9 @@ fun TvSectionRow(
     progressProvider: ((MediaCard) -> Float?)? = null
 ) {
     if (items.isEmpty()) return
+    val uniqueItems = remember(items) {
+        items.distinctBy { "${it.sourceId}_${it.type.name}_${it.id}" }
+    }
 
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -346,7 +406,11 @@ fun TvSectionRow(
             contentPadding = PaddingValues(horizontal = 24.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            items(items, key = { "${it.sourceId}_${it.id}" }) { card ->
+            items(
+                items = uniqueItems,
+                key = { "${it.sourceId}_${it.type.name}_${it.id}" },
+                contentType = { "section_card" }
+            ) { card ->
                 TvPosterCard(
                     item = card,
                     onClick = { onItemClick(card) },
