@@ -15,6 +15,10 @@ const DEFAULT_PREFS: AppPreferences = {
     backgroundColorArgb: 0x80000000,
     edgeType: 1,
   },
+  primaryMovieSourceId: "builtin_movy_sx",
+  primaryTvSourceId: "builtin_movy_sx",
+  primaryAnimeSourceId: "builtin_reanime",
+  trackSeriesNewEpisodes: false,
 };
 
 export function usePreferences() {
@@ -25,7 +29,9 @@ export function usePreferences() {
     queryFn: api.getPreferences,
   });
 
-  const prefs = query.data ?? DEFAULT_PREFS;
+  const prefs: AppPreferences = query.data
+    ? { ...DEFAULT_PREFS, ...query.data }
+    : DEFAULT_PREFS;
   const t = getTranslations(prefs.language);
 
   const saveMutation = useMutation({

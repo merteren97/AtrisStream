@@ -28,6 +28,7 @@
 
     <!-- Home -->
     <string name="home_continue_watching">İzlemeye Devam Et</string>
+    <string name="home_new_episodes_watchlist">İzleme Listesinden Yeni Bölümler</string>
     <string name="home_active_source">Aktif Kaynak</string>
     <string name="home_featured">Öne Çıkan</string>
     <string name="home_empty">Bu kaynaktan içerik bulunamadı.</string>
@@ -50,6 +51,19 @@
     <!-- Watchlist -->
     <string name="watchlist_title">İzleme Listem</string>
     <string name="watchlist_empty">İzleme listeniz boş. Detay sayfasından film veya dizi ekleyebilirsiniz.</string>
+    <string name="watchlist_empty_filter">Bu filtreyle eşleşen içerik yok.</string>
+    <string name="watchlist_refresh">Yenile</string>
+    <string name="watchlist_refreshing">Kontrol ediliyor…</string>
+    <string name="watchlist_refresh_found">%1$d yeni bölüm bulundu</string>
+    <string name="watchlist_refresh_up_to_date">Güncel</string>
+    <string name="watchlist_filter_all">Tümü</string>
+    <string name="watchlist_filter_new">Yeni Bölüm</string>
+    <string name="watchlist_filter_anime">Anime</string>
+    <string name="watchlist_filter_series">Diziler</string>
+    <string name="watchlist_filter_movies">Filmler</string>
+    <string name="watchlist_badge_new_se">S%1$dE%2$d Yeni</string>
+    <string name="watchlist_badge_new_ep">Yeni Bölüm • B%1$d</string>
+    <string name="watchlist_watched_ep">B%1$d bitti</string>
 
     <!-- Details -->
     <string name="details_add_watchlist">Listeye Ekle</string>
@@ -60,6 +74,10 @@
     <string name="details_episode_label">B%1$d • %2$s</string>
     <string name="details_cast">Oyuncular</string>
     <string name="details_runtime_min">%1$d dk</string>
+    <string name="details_episode_upcoming">Yayınlanmadı</string>
+    <string name="details_mark_finished">Bitti İşaretle</string>
+    <string name="details_marked_watched">İzlendi</string>
+    <string name="details_finish_current">S%1$dE%2$d Bitir</string>
 
     <!-- Resources / Kaynaklar -->
     <string name="resources_title">Kaynaklar</string>
@@ -76,6 +94,13 @@
     <string name="resources_test_ok">Tamam • %1$d ms • %2$d içerik</string>
     <string name="resources_test_fail">Hata: %1$s</string>
     <string name="resources_builtin">Yerleşik</string>
+    <string name="resources_filter_all">Tümü</string>
+    <string name="resources_filter_movies">Filmler</string>
+    <string name="resources_filter_series">Diziler</string>
+    <string name="resources_filter_anime">Anime</string>
+    <string name="resources_primary_movie">Öncül Film</string>
+    <string name="resources_primary_tv">Öncül Dizi</string>
+    <string name="resources_primary_anime">Öncül Anime</string>
     <string name="resources_lan_title">LAN Web Yapıştırma Sunucusu</string>
     <string name="resources_lan_desc">Aynı Wi-Fi ağındaki telefon veya bilgisayardan bu adresi açarak kaynak URL\'sini doğrudan TV\'ye gönderin.</string>
     <string name="resources_lan_start">Sunucuyu Başlat</string>
@@ -100,6 +125,16 @@
     <string name="settings_subtitle_color">Yazı Rengi</string>
     <string name="settings_subtitle_bg">Arka Plan Opaklığı</string>
     <string name="settings_subtitle_preview">AtrisStream örnek altyazı önizlemesi</string>
+    <string name="settings_primary_sources">Öncül Kaynaklar</string>
+    <string name="settings_primary_sources_desc">Filmler, Diziler veya Anime sekmeleri açıldığında varsayılan olarak seçilecek kaynağı belirleyin.</string>
+    <string name="settings_primary_movies">Filmler</string>
+    <string name="settings_primary_series">Diziler</string>
+    <string name="settings_primary_anime">Anime</string>
+    <string name="settings_new_episode_tracking">Yeni Bölüm Takibi</string>
+    <string name="settings_new_episode_tracking_desc">Anime yeni bölüm takibi her zaman aktiftir. İzleme listenizdeki diziler için de yeni bölüm kontrolünü aşağıdan açabilirsiniz.</string>
+    <string name="settings_track_series_toggle">Diziler İçin Yeni Bölüm Takibi</string>
+    <string name="settings_toggle_on">Açık</string>
+    <string name="settings_toggle_off">Kapalı</string>
     <string name="about_title">AtrisStream Hakkında</string>
     <string name="about_version">Sürüm 1.0.0 • Açık Kaynak (MIT Lisansı)</string>
     <string name="about_description">AtrisStream, dinamik çoklu kaynak desteğine sahip topluluk odaklı bir Android TV ve Google TV medya oynatıcısıdır. GitHub üzerinden katkıda bulunabilirsiniz.</string>

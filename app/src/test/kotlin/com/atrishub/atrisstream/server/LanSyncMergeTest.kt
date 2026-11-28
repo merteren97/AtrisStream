@@ -192,6 +192,45 @@ class LanSyncMergeTest {
     }
 
     @Test
+    fun mergeWatchlist_equalAddedAtUsesNewerLastCheckedAtTieBreaker() {
+        val local = listOf(
+            WatchlistItem(
+                mediaId = "anime-1",
+                sourceId = "builtin_reanime",
+                type = MediaType.ANIME,
+                title = "Frieren",
+                addedAt = 10_000L,
+                knownEpisodeCount = 10,
+                hasNewEpisode = false,
+                lastCheckedAt = 20_000L
+            )
+        )
+        val incoming = listOf(
+            WatchlistItem(
+                mediaId = "anime-1",
+                sourceId = "builtin_reanime",
+                type = MediaType.ANIME,
+                title = "Frieren",
+                addedAt = 10_000L,
+                knownEpisodeCount = 10,
+                latestAvailableSeason = 1,
+                latestAvailableEpisode = 11,
+                latestEpisodeCount = 11,
+                hasNewEpisode = true,
+                lastCheckedAt = 30_000L
+            )
+        )
+
+        val outcome = LanSyncMerger.mergeWatchlist(local, incoming)
+
+        assertEquals(1, outcome.toUpsert.size)
+        val merged = outcome.merged.single()
+        assertTrue(merged.hasNewEpisode)
+        assertEquals(11, merged.latestAvailableEpisode)
+        assertEquals(30_000L, merged.lastCheckedAt)
+    }
+
+    @Test
     fun mergeSources_mergesNonBuiltInWithoutOverwritingBuiltInMovy() {
         val builtInMovy = InstalledSource(
             id = "movy.sx",

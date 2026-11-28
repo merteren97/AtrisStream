@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { MediaCardView } from "../components/MediaCardView";
@@ -15,7 +15,7 @@ interface BrowsePageProps {
 const MAX_BROWSE_ITEMS = 200;
 
 export function BrowsePage({ mediaType, title }: BrowsePageProps) {
-  const { t } = usePreferences();
+  const { prefs, t } = usePreferences();
   const activeSourceId = useAppStore((s) => s.activeSourceId);
   const openDetails = useAppStore((s) => s.openDetails);
 
@@ -24,11 +24,38 @@ export function BrowsePage({ mediaType, title }: BrowsePageProps) {
     queryFn: api.getSources,
   });
 
-  const targetSourceId =
-    activeSourceId ??
-    sources.find((s) => s.enabled && s.supportedTypes.includes(mediaType))?.id ??
-    sources.find((s) => s.enabled)?.id ??
-    "builtin_movy_sx";
+  const categorySources = useMemo(
+    () =>
+      sources.filter(
+        (s) => s.enabled && s.supportedTypes.includes(mediaType)
+      ),
+    [sources, mediaType]
+  );
+
+  const primarySourceId = useMemo(() => {
+    if (mediaType === "MOVIE") return prefs.primaryMovieSourceId;
+    if (mediaType === "TV") return prefs.primaryTvSourceId;
+    if (mediaType === "ANIME") return prefs.primaryAnimeSourceId;
+    return null;
+  }, [mediaType, prefs]);
+
+  const [selectedByType, setSelectedByType] = useState<
+    Partial<Record<MediaType, string>>
+  >({});
+
+  const targetSourceId = useMemo(() => {
+    const localOverride = selectedByType[mediaType];
+    if (localOverride && categorySources.some((s) => s.id === localOverride)) {
+      return localOverride;
+    }
+    if (activeSourceId && categorySources.some((s) => s.id === activeSourceId)) {
+      return activeSourceId;
+    }
+    if (primarySourceId && categorySources.some((s) => s.id === primarySourceId)) {
+      return primarySourceId;
+    }
+    return categorySources[0]?.id ?? "";
+  }, [selectedByType, mediaType, categorySources, activeSourceId, primarySourceId]);
 
   const [page, setPage] = useState(1);
   const [items, setItems] = useState<MediaCard[]>([]);
@@ -67,7 +94,7 @@ export function BrowsePage({ mediaType, title }: BrowsePageProps) {
 
   return (
     <div className="space-y-6 pb-12">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-[#F8FAFC]">
             {title}
@@ -76,6 +103,35 @@ export function BrowsePage({ mediaType, title }: BrowsePageProps) {
             {items.length} {t.browse.itemsCount}
           </p>
         </div>
+
+        {categorySources.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-medium text-[#94A3B8]">
+              {t.browse.sourceLabel}:
+            </span>
+            {categorySources.map((src) => {
+              const isSelected = src.id === targetSourceId;
+              return (
+                <button
+                  key={src.id}
+                  onClick={() =>
+                    setSelectedByType((prev) => ({
+                      ...prev,
+                      [mediaType]: src.id,
+                    }))
+                  }
+                  className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition-colors ${
+                    isSelected
+                      ? "bg-[#38BDF8] text-[#0B0E14] shadow-sm shadow-[#38BDF8]/25"
+                      : "border border-[#283347] bg-[#141923] text-[#94A3B8] hover:border-[#38BDF8]/50 hover:text-[#F8FAFC]"
+                  }`}
+                >
+                  {src.name}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {items.length === 0 && isFetching ? (

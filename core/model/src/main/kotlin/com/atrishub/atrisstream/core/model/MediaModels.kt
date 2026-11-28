@@ -91,5 +91,6 @@ data class Episode(
     val title: String,
     val overview: String? = null,
     val thumbnailUrl: String? = null,
-    val runtimeMinutes: Int? = null
+    val runtimeMinutes: Int? = null,
+    val isReleased: Boolean = true
 )

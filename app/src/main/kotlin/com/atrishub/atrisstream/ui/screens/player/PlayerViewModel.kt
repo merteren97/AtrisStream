@@ -98,8 +98,8 @@ class PlayerViewModel(
     fun playNextEpisode() {
         val current = _uiState.value.launchArgs
         val currentEpNum = current.episodeNumber ?: return
-        val nextEp = seasonEpisodes.firstOrNull { it.episodeNumber == currentEpNum + 1 }
-            ?: seasonEpisodes.dropWhile { it.episodeNumber <= currentEpNum }.firstOrNull()
+        val nextEp = seasonEpisodes.firstOrNull { it.isReleased && it.episodeNumber == currentEpNum + 1 }
+            ?: seasonEpisodes.firstOrNull { it.isReleased && it.episodeNumber > currentEpNum }
             ?: return
 
         appScope.launch {
@@ -146,7 +146,7 @@ class PlayerViewModel(
                 }
 
                 val hasNext = episodeNum != null &&
-                    seasonEpisodes.any { it.episodeNumber > episodeNum }
+                    seasonEpisodes.any { it.isReleased && it.episodeNumber > episodeNum }
 
                 val result = provider.getStreams(
                     mediaId = args.mediaId,

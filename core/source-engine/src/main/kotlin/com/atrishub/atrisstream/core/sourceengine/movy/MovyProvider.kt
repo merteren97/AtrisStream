@@ -35,6 +35,10 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -355,9 +359,20 @@ class MovyProvider(
                 title = obj.str("name")?.takeIf { it.isNotBlank() } ?: "Bölüm $epNum",
                 overview = obj.str("overview"),
                 thumbnailUrl = obj.str("still_path")?.let(::tmdbBackdropUrl),
-                runtimeMinutes = obj.int("runtime")
+                runtimeMinutes = obj.int("runtime"),
+                isReleased = isTmdbAirDateReleased(obj.str("air_date"))
             )
         }
+    }
+
+    internal fun isTmdbAirDateReleased(
+        airDate: String?,
+        todayUtc: String = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+            timeZone = TimeZone.getTimeZone("UTC")
+        }.format(Date())
+    ): Boolean {
+        if (airDate.isNullOrBlank() || airDate.length < 10) return true
+        return airDate.take(10) <= todayUtc
     }
 
     override suspend fun getStreams(

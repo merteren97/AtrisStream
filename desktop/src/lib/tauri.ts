@@ -101,6 +101,28 @@ export const api = {
       seasonNumber: seasonNumber ?? null,
       episodeNumber: episodeNumber ?? null,
     }),
+  setEpisodeCompleted: (params: {
+    sourceId: string;
+    mediaId: string;
+    mediaType: MediaType;
+    title: string;
+    posterUrl?: string | null;
+    seasonNumber?: number | null;
+    episodeNumber?: number | null;
+    completed: boolean;
+    releasedCount?: number | null;
+  }) =>
+    invoke<void>("set_episode_completed", {
+      sourceId: params.sourceId,
+      mediaId: params.mediaId,
+      mediaType: params.mediaType,
+      title: params.title,
+      posterUrl: params.posterUrl ?? null,
+      seasonNumber: params.seasonNumber ?? null,
+      episodeNumber: params.episodeNumber ?? null,
+      completed: params.completed,
+      releasedCount: params.releasedCount ?? null,
+    }),
 
   // Watchlist
   getWatchlist: () => invoke<WatchlistItem[]>("get_watchlist"),
@@ -108,6 +130,8 @@ export const api = {
     invoke<boolean>("is_saved_to_watchlist", { sourceId, mediaId }),
   toggleWatchlist: (item: WatchlistItem) =>
     invoke<boolean>("toggle_watchlist", { item }),
+  refreshWatchlistEpisodes: () =>
+    invoke<WatchlistItem[]>("refresh_watchlist_episodes"),
 
   // Preferences
   getPreferences: () => invoke<AppPreferences>("get_preferences"),

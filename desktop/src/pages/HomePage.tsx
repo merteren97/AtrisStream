@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Info, Play, RefreshCw, Sparkles } from "lucide-react";
 import { HorizontalRow } from "../components/HorizontalRow";
@@ -7,21 +8,57 @@ import { api } from "../lib/tauri";
 import { useAppStore } from "../store/appStore";
 import type { WatchProgress } from "../types/models";
 
+const WATCHLIST_REFRESH_THROTTLE_MS = 15 * 60 * 1000;
+let lastHomeWatchlistRefreshAt = 0;
+
 export function HomePage() {
-  const { t } = usePreferences();
+  const { prefs, t } = usePreferences();
   const queryClient = useQueryClient();
   const activeSourceId = useAppStore((s) => s.activeSourceId);
   const openDetails = useAppStore((s) => s.openDetails);
   const openPlayer = useAppStore((s) => s.openPlayer);
+
+  const { data: sources = [] } = useQuery({
+    queryKey: ["sources"],
+    queryFn: api.getSources,
+  });
+
+  const homeSourceId =
+    activeSourceId ??
+    prefs.primaryMovieSourceId ??
+    sources.find((s) => s.enabled)?.id;
 
   const {
     data: homeSections = [],
     isLoading: loadingHome,
     refetch: refetchHome,
   } = useQuery({
-    queryKey: ["home", activeSourceId],
-    queryFn: () => api.getHome(activeSourceId ?? undefined),
+    queryKey: ["home", homeSourceId],
+    queryFn: () => api.getHome(homeSourceId ?? undefined),
   });
+
+  const { data: watchlist = [] } = useQuery({
+    queryKey: ["watchlist"],
+    queryFn: api.getWatchlist,
+  });
+
+  useEffect(() => {
+    const now = Date.now();
+    if (now - lastHomeWatchlistRefreshAt < WATCHLIST_REFRESH_THROTTLE_MS) {
+      return;
+    }
+    lastHomeWatchlistRefreshAt = now;
+    api
+      .refreshWatchlistEpisodes()
+      .then((updated) => {
+        queryClient.setQueryData(["watchlist"], updated);
+      })
+      .catch(() => {
+        // Best-effort background refresh
+      });
+  }, [queryClient]);
+
+  const newEpisodeItems = watchlist.filter((item) => item.hasNewEpisode);
 
   const { data: continueWatching = [] } = useQuery({
     queryKey: ["continueWatching"],
@@ -51,6 +88,7 @@ export function HomePage() {
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["continueWatching"] });
+      queryClient.invalidateQueries({ queryKey: ["watchlist"] });
     },
   });
 
@@ -123,6 +161,40 @@ export function HomePage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* New Episodes in Watchlist */}
+      {newEpisodeItems.length > 0 && (
+        <HorizontalRow title={t.home.newEpisodesInWatchlist}>
+          {newEpisodeItems.map((item) => {
+            const epNum =
+              item.latestAvailableEpisode ?? item.latestEpisodeCount ?? 0;
+            const epPrefix = prefs.language === "en" ? "E" : "B";
+            const badge =
+              epNum > 0
+                ? `${t.home.newEpisodeShort} · ${epPrefix}${epNum}`
+                : t.home.newEpisodeShort;
+
+            return (
+              <MediaCardView
+                key={`new_${item.sourceId}_${item.mediaId}`}
+                title={item.title}
+                posterUrl={item.posterUrl}
+                type={item.type}
+                year={item.year}
+                rating={item.rating}
+                highlightBadge={badge}
+                onClick={() =>
+                  openDetails({
+                    sourceId: item.sourceId,
+                    mediaId: item.mediaId,
+                    mediaType: item.type,
+                  })
+                }
+              />
+            );
+          })}
+        </HorizontalRow>
       )}
 
       {/* Continue Watching */}

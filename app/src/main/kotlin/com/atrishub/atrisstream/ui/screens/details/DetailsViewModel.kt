@@ -148,6 +148,19 @@ class DetailsViewModel(
             if (isSavedToWatchlist.value) {
                 repository.removeFromWatchlist(sourceId, mediaId)
             } else {
+                val allEpisodes = details.seasons
+                    .flatMap { it.episodes }
+                    .ifEmpty { _uiState.value.episodes }
+                val releasedEpisodes = allEpisodes.filter { it.isReleased }
+                val releasedCount = releasedEpisodes.size
+                val latestReleased = releasedEpisodes.maxWithOrNull(
+                    compareBy<Episode>({ it.seasonNumber }, { it.episodeNumber })
+                )
+                val highestCompleted = _uiState.value.episodeProgressMap.values
+                    .filter { it.isCompleted && it.seasonNumber != null && it.episodeNumber != null }
+                    .maxWithOrNull(compareBy<WatchProgress>({ it.seasonNumber ?: 0 }, { it.episodeNumber ?: 0 }))
+                val latest = highestCompleted ?: _uiState.value.latestProgress
+
                 repository.upsertWatchlistItem(
                     WatchlistItem(
                         mediaId = details.id,
@@ -157,10 +170,69 @@ class DetailsViewModel(
                         posterUrl = details.posterUrl,
                         year = details.year,
                         rating = details.rating,
-                        addedAt = System.currentTimeMillis()
+                        addedAt = System.currentTimeMillis(),
+                        lastWatchedSeason = latest?.seasonNumber,
+                        lastWatchedEpisode = latest?.episodeNumber,
+                        knownEpisodeCount = releasedCount,
+                        latestAvailableSeason = latestReleased?.seasonNumber,
+                        latestAvailableEpisode = latestReleased?.episodeNumber,
+                        latestEpisodeCount = releasedCount,
+                        hasNewEpisode = false
                     )
                 )
             }
+        }
+    }
+
+    fun toggleEpisodeCompleted(episode: Episode) {
+        val details = _uiState.value.details ?: return
+        val currentlyCompleted = _uiState.value.episodeProgressMap[
+            episode.seasonNumber to episode.episodeNumber
+        ]?.isCompleted == true
+        val allEpisodes = details.seasons
+            .flatMap { it.episodes }
+            .ifEmpty { _uiState.value.episodes }
+        val releasedCount = allEpisodes.count { it.isReleased }.takeIf { it > 0 }
+
+        viewModelScope.launch {
+            repository.setEpisodeCompleted(
+                sourceId = details.sourceId,
+                mediaId = details.id,
+                type = details.type,
+                title = details.title,
+                posterUrl = details.posterUrl,
+                seasonNumber = episode.seasonNumber,
+                episodeNumber = episode.episodeNumber,
+                completed = !currentlyCompleted,
+                releasedCount = releasedCount
+            )
+            refreshWatchProgress()
+        }
+    }
+
+    fun markCurrentEpisodeCompleted() {
+        val details = _uiState.value.details ?: return
+        val latest = _uiState.value.latestProgress ?: return
+        val season = latest.seasonNumber ?: return
+        val episode = latest.episodeNumber ?: return
+        val allEpisodes = details.seasons
+            .flatMap { it.episodes }
+            .ifEmpty { _uiState.value.episodes }
+        val releasedCount = allEpisodes.count { it.isReleased }.takeIf { it > 0 }
+
+        viewModelScope.launch {
+            repository.setEpisodeCompleted(
+                sourceId = details.sourceId,
+                mediaId = details.id,
+                type = details.type,
+                title = details.title,
+                posterUrl = details.posterUrl,
+                seasonNumber = season,
+                episodeNumber = episode,
+                completed = true,
+                releasedCount = releasedCount
+            )
+            refreshWatchProgress()
         }
     }
 

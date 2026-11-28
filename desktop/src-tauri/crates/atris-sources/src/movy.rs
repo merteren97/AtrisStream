@@ -835,6 +835,7 @@ impl MediaProvider for MovyProvider {
                         overview: None,
                         thumbnail_url: None,
                         runtime_minutes: None,
+                        is_released: true,
                     })
                 })
                 .collect());
@@ -846,6 +847,7 @@ impl MediaProvider for MovyProvider {
         let Some(arr) = root.get("episodes").and_then(|v| v.as_array()) else {
             return Ok(Vec::new());
         };
+        let today_utc = chrono::Utc::now().date_naive();
         Ok(arr
             .iter()
             .filter_map(|el| {
@@ -853,6 +855,15 @@ impl MediaProvider for MovyProvider {
                 let title = json_str(el, "name")
                     .filter(|t| !t.trim().is_empty())
                     .unwrap_or_else(|| format!("Bölüm {ep_num}"));
+                let is_released = match json_str(el, "air_date") {
+                    Some(ref date_str) if !date_str.trim().is_empty() => {
+                        match chrono::NaiveDate::parse_from_str(date_str.trim(), "%Y-%m-%d") {
+                            Ok(air_date) => air_date <= today_utc,
+                            Err(_) => true,
+                        }
+                    }
+                    _ => true,
+                };
                 Some(Episode {
                     id: format!("{id}_s{season}_e{ep_num}"),
                     season_number: season,
@@ -861,6 +872,7 @@ impl MediaProvider for MovyProvider {
                     overview: json_str(el, "overview"),
                     thumbnail_url: json_str(el, "still_path").map(|p| tmdb_backdrop_url(&p)),
                     runtime_minutes: json_i32(el, "runtime"),
+                    is_released,
                 })
             })
             .collect())

@@ -19,7 +19,7 @@ import com.atrishub.atrisstream.core.database.entity.WatchlistEntity
         WatchProgressEntity::class,
         WatchlistEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class AtrisDatabase : RoomDatabase() {
@@ -59,6 +59,19 @@ abstract class AtrisDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_2_3: Migration = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE watchlist ADD COLUMN lastWatchedSeason INTEGER")
+                db.execSQL("ALTER TABLE watchlist ADD COLUMN lastWatchedEpisode INTEGER")
+                db.execSQL("ALTER TABLE watchlist ADD COLUMN knownEpisodeCount INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE watchlist ADD COLUMN latestAvailableSeason INTEGER")
+                db.execSQL("ALTER TABLE watchlist ADD COLUMN latestAvailableEpisode INTEGER")
+                db.execSQL("ALTER TABLE watchlist ADD COLUMN latestEpisodeCount INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE watchlist ADD COLUMN hasNewEpisode INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE watchlist ADD COLUMN lastCheckedAt INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         fun getInstance(context: Context): AtrisDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -66,7 +79,7 @@ abstract class AtrisDatabase : RoomDatabase() {
                     AtrisDatabase::class.java,
                     "atris_stream.db"
                 )
-                    .addMigrations(MIGRATION_1_2)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                     .build()
                     .also { instance = it }
             }

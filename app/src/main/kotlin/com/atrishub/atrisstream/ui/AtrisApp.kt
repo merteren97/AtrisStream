@@ -73,7 +73,11 @@ fun AtrisApp(container: AppContainer) {
             ) {
                 composable(Screen.Home.route) {
                     val vm: HomeViewModel = viewModel(
-                        factory = HomeViewModel.Factory(container.sourceManager, container.repository)
+                        factory = HomeViewModel.Factory(
+                            container.sourceManager,
+                            container.repository,
+                            container.preferencesRepository
+                        )
                     )
                     HomeScreen(
                         viewModel = vm,
@@ -89,7 +93,11 @@ fun AtrisApp(container: AppContainer) {
                 composable(Screen.Movies.route) {
                     val vm: BrowseViewModel = viewModel(
                         key = "browse_movie",
-                        factory = BrowseViewModel.Factory(MediaType.MOVIE, container.sourceManager)
+                        factory = BrowseViewModel.Factory(
+                            MediaType.MOVIE,
+                            container.sourceManager,
+                            container.preferencesRepository
+                        )
                     )
                     BrowseScreen(
                         viewModel = vm,
@@ -102,7 +110,11 @@ fun AtrisApp(container: AppContainer) {
                 composable(Screen.Series.route) {
                     val vm: BrowseViewModel = viewModel(
                         key = "browse_tv",
-                        factory = BrowseViewModel.Factory(MediaType.TV, container.sourceManager)
+                        factory = BrowseViewModel.Factory(
+                            MediaType.TV,
+                            container.sourceManager,
+                            container.preferencesRepository
+                        )
                     )
                     BrowseScreen(
                         viewModel = vm,
@@ -115,7 +127,11 @@ fun AtrisApp(container: AppContainer) {
                 composable(Screen.Anime.route) {
                     val vm: BrowseViewModel = viewModel(
                         key = "browse_anime",
-                        factory = BrowseViewModel.Factory(MediaType.ANIME, container.sourceManager)
+                        factory = BrowseViewModel.Factory(
+                            MediaType.ANIME,
+                            container.sourceManager,
+                            container.preferencesRepository
+                        )
                     )
                     BrowseScreen(
                         viewModel = vm,
@@ -139,7 +155,11 @@ fun AtrisApp(container: AppContainer) {
 
                 composable(Screen.Watchlist.route) {
                     val vm: WatchlistViewModel = viewModel(
-                        factory = WatchlistViewModel.Factory(container.repository)
+                        factory = WatchlistViewModel.Factory(
+                            container.repository,
+                            container.sourceManager,
+                            container.preferencesRepository
+                        )
                     )
                     WatchlistScreen(
                         viewModel = vm,
@@ -151,14 +171,21 @@ fun AtrisApp(container: AppContainer) {
 
                 composable(Screen.Resources.route) {
                     val vm: ResourcesViewModel = viewModel(
-                        factory = ResourcesViewModel.Factory(container.sourceManager, container.lanPasteServer)
+                        factory = ResourcesViewModel.Factory(
+                            container.sourceManager,
+                            container.lanPasteServer,
+                            container.preferencesRepository
+                        )
                     )
                     ResourcesScreen(viewModel = vm)
                 }
 
                 composable(Screen.Settings.route) {
                     val vm: SettingsViewModel = viewModel(
-                        factory = SettingsViewModel.Factory(container.preferencesRepository)
+                        factory = SettingsViewModel.Factory(
+                            container.preferencesRepository,
+                            container.sourceManager
+                        )
                     )
                     SettingsScreen(viewModel = vm)
                 }

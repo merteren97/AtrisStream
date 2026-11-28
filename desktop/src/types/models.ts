@@ -35,6 +35,7 @@ export interface Episode {
   overview?: string | null;
   thumbnailUrl?: string | null;
   runtimeMinutes?: number | null;
+  isReleased?: boolean;
 }
 
 export interface Season {
@@ -135,6 +136,14 @@ export interface WatchlistItem {
   year?: number | null;
   rating?: number | null;
   addedAt: number;
+  lastWatchedSeason?: number | null;
+  lastWatchedEpisode?: number | null;
+  knownEpisodeCount?: number;
+  latestAvailableSeason?: number | null;
+  latestAvailableEpisode?: number | null;
+  latestEpisodeCount?: number;
+  hasNewEpisode?: boolean;
+  lastCheckedAt?: number;
 }
 
 export interface SubtitleAppearance {
@@ -151,6 +160,10 @@ export interface AppPreferences {
   preferredSubtitleLang: string;
   language: "tr" | "en";
   subtitleAppearance: SubtitleAppearance;
+  primaryMovieSourceId?: string | null;
+  primaryTvSourceId?: string | null;
+  primaryAnimeSourceId?: string | null;
+  trackSeriesNewEpisodes?: boolean;
 }
 
 export interface PlayerCapabilities {

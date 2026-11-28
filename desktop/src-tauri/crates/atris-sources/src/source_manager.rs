@@ -1,8 +1,10 @@
+use crate::animex::{self, AnimeXProvider};
 use crate::http::HttpClient;
 use crate::js_plugin::JsPluginProvider;
 use crate::json_manifest::JsonManifestProvider;
 use crate::movy::{self, MovyProvider};
 use crate::provider::{MediaProvider, SourceError};
+use crate::reanime::{self, ReAnimeProvider};
 use atris_core::{
     Episode, HomeSection, InstalledSource, MediaCard, MediaDetails, MediaType, PagedResult,
     ProviderManifest, SourceDriverType, SourceHealthResult, SourceSearchResult, StreamResult,
@@ -36,8 +38,8 @@ impl SourceManager {
     }
 
     pub async fn initialize(&self) -> Result<(), SourceError> {
-        if self.storage.get_source_by_id(movy::SOURCE_ID)?.is_none() {
-            self.storage.upsert_source(&InstalledSource {
+        let builtins = [
+            InstalledSource {
                 id: movy::SOURCE_ID.to_string(),
                 name: "Movy.sx (TR)".to_string(),
                 version: "1.0.0".to_string(),
@@ -50,7 +52,41 @@ impl SourceManager {
                 languages: vec!["tr".to_string(), "en".to_string()],
                 raw_config: None,
                 added_at: now_ms(),
-            })?;
+            },
+            InstalledSource {
+                id: reanime::SOURCE_ID.to_string(),
+                name: "ReAnime (Anime)".to_string(),
+                version: "1.0.0".to_string(),
+                base_url: reanime::SITE_URL.to_string(),
+                manifest_url: None,
+                driver_type: SourceDriverType::BUILTIN,
+                enabled: true,
+                is_built_in: true,
+                supported_types: vec![MediaType::ANIME],
+                languages: vec!["en".to_string(), "ja".to_string()],
+                raw_config: None,
+                added_at: now_ms(),
+            },
+            InstalledSource {
+                id: animex::SOURCE_ID.to_string(),
+                name: "AnimeX (Anime)".to_string(),
+                version: "1.0.0".to_string(),
+                base_url: animex::SITE_URL.to_string(),
+                manifest_url: None,
+                driver_type: SourceDriverType::BUILTIN,
+                enabled: true,
+                is_built_in: true,
+                supported_types: vec![MediaType::ANIME],
+                languages: vec!["en".to_string(), "ja".to_string()],
+                raw_config: None,
+                added_at: now_ms(),
+            },
+        ];
+
+        for builtin in builtins {
+            if self.storage.get_source_by_id(&builtin.id)?.is_none() {
+                self.storage.upsert_source(&builtin)?;
+            }
         }
         Ok(())
     }
@@ -59,12 +95,20 @@ impl SourceManager {
         if let Some(src) = self.storage.get_source_by_id(source_id)? {
             return self.build_provider(&src).await;
         }
-        if source_id == movy::SOURCE_ID {
+        if matches!(
+            source_id,
+            movy::SOURCE_ID | reanime::SOURCE_ID | animex::SOURCE_ID
+        ) {
             let mut cache = self.cache.write().await;
             if let Some(cached) = cache.get(source_id) {
                 return Ok(Arc::clone(&cached.provider));
             }
-            let provider: Arc<dyn MediaProvider> = Arc::new(MovyProvider::new(self.http.clone()));
+            let provider: Arc<dyn MediaProvider> = match source_id {
+                movy::SOURCE_ID => Arc::new(MovyProvider::new(self.http.clone())),
+                reanime::SOURCE_ID => Arc::new(ReAnimeProvider::new(self.http.clone())),
+                animex::SOURCE_ID => Arc::new(AnimeXProvider::new(self.http.clone())),
+                _ => unreachable!(),
+            };
             cache.insert(
                 source_id.to_string(),
                 CachedProvider {
@@ -97,13 +141,12 @@ impl SourceManager {
         }
 
         let created: Arc<dyn MediaProvider> = match source.driver_type {
-            SourceDriverType::BUILTIN => {
-                if source.id == movy::SOURCE_ID {
-                    Arc::new(MovyProvider::new(self.http.clone()))
-                } else {
-                    return Err(SourceError::NotFound(source.id.clone()));
-                }
-            }
+            SourceDriverType::BUILTIN => match source.id.as_str() {
+                movy::SOURCE_ID => Arc::new(MovyProvider::new(self.http.clone())),
+                reanime::SOURCE_ID => Arc::new(ReAnimeProvider::new(self.http.clone())),
+                animex::SOURCE_ID => Arc::new(AnimeXProvider::new(self.http.clone())),
+                _ => return Err(SourceError::NotFound(source.id.clone())),
+            },
             SourceDriverType::JSON_MANIFEST => {
                 let raw = source
                     .raw_config

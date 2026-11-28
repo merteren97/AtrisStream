@@ -6,13 +6,15 @@ use atris_core::{
     AppPreferences, DiscoveredDevice, Episode, HomeSection, InstalledSource, MediaCard,
     MediaDetails, MediaType, PagedResult, PairedDevice, SourceHealthResult, SourceSearchResult,
     StreamResult, SubtitleAppearance, SubtitleFormat, SubtitleTrack, SyncSummary, WatchProgress,
-    WatchProgressPolicy, WatchlistItem,
+    WatchProgressPolicy, WatchlistItem, WatchlistTrackingPolicy,
 };
 use std::{
     collections::HashMap,
+    sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
 use tauri::{AppHandle, State};
+use tokio::{sync::Semaphore, task::JoinSet};
 
 fn now_millis() -> i64 {
     SystemTime::now()
@@ -242,6 +244,36 @@ pub async fn mark_watch_progress_completed(
         .map_err(|e| e.to_string())
 }
 
+#[allow(clippy::too_many_arguments)]
+#[tauri::command]
+pub async fn set_episode_completed(
+    state: State<'_, AppState>,
+    source_id: String,
+    media_id: String,
+    media_type: MediaType,
+    title: String,
+    poster_url: Option<String>,
+    season_number: Option<i32>,
+    episode_number: Option<i32>,
+    completed: bool,
+    released_count: Option<i32>,
+) -> Result<(), String> {
+    state
+        .storage
+        .set_episode_completed(
+            &source_id,
+            &media_id,
+            media_type,
+            &title,
+            poster_url.as_deref(),
+            season_number,
+            episode_number,
+            completed,
+            released_count,
+        )
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub async fn delete_watch_progress(
     state: State<'_, AppState>,
@@ -258,7 +290,8 @@ pub async fn delete_watch_progress(
 
 #[tauri::command]
 pub async fn get_watchlist(state: State<'_, AppState>) -> Result<Vec<WatchlistItem>, String> {
-    state.storage.get_watchlist().map_err(|e| e.to_string())
+    let items = state.storage.get_watchlist().map_err(|e| e.to_string())?;
+    Ok(WatchlistTrackingPolicy::sort_watchlist_with_priority(&items))
 }
 
 #[tauri::command]
@@ -293,12 +326,115 @@ pub async fn toggle_watchlist(
         if item.added_at <= 0 {
             item.added_at = now_millis();
         }
+        if item.known_episode_count == 0
+            && matches!(item.r#type, MediaType::ANIME | MediaType::TV)
+        {
+            if let Ok(episodes) =
+                fetch_all_episodes_best_effort(&state.sources, &item.source_id, &item.media_id, item.r#type).await
+            {
+                if !episodes.is_empty() {
+                    let progress = state
+                        .storage
+                        .get_all_progress_for_media(&item.source_id, &item.media_id)
+                        .unwrap_or_default();
+                    item = WatchlistTrackingPolicy::evaluate_watchlist_update(
+                        &item,
+                        &episodes,
+                        &progress,
+                        now_millis(),
+                    );
+                }
+            }
+        }
         state
             .storage
             .upsert_watchlist_item(&item)
             .map_err(|e| e.to_string())?;
         Ok(true)
     }
+}
+
+#[tauri::command]
+pub async fn refresh_watchlist_episodes(
+    state: State<'_, AppState>,
+) -> Result<Vec<WatchlistItem>, String> {
+    let prefs = state.storage.get_preferences().unwrap_or_default();
+    let items = state.storage.get_watchlist().map_err(|e| e.to_string())?;
+    let semaphore = Arc::new(Semaphore::new(3));
+    let mut set = JoinSet::new();
+
+    for item in items {
+        let should_check = item.r#type == MediaType::ANIME
+            || (item.r#type == MediaType::TV && prefs.track_series_new_episodes);
+        if !should_check {
+            continue;
+        }
+        let sem = Arc::clone(&semaphore);
+        let sources = Arc::clone(&state.sources);
+        let storage = Arc::clone(&state.storage);
+        set.spawn(async move {
+            let Ok(_permit) = sem.acquire_owned().await else {
+                return;
+            };
+            if let Ok(episodes) = fetch_all_episodes_best_effort(
+                &sources,
+                &item.source_id,
+                &item.media_id,
+                item.r#type,
+            )
+            .await
+            {
+                let progress = storage
+                    .get_all_progress_for_media(&item.source_id, &item.media_id)
+                    .unwrap_or_default();
+                let updated = WatchlistTrackingPolicy::evaluate_watchlist_update(
+                    &item,
+                    &episodes,
+                    &progress,
+                    now_millis(),
+                );
+                let _ = storage.upsert_watchlist_item(&updated);
+            }
+        });
+    }
+
+    while set.join_next().await.is_some() {}
+
+    let refreshed = state.storage.get_watchlist().map_err(|e| e.to_string())?;
+    Ok(WatchlistTrackingPolicy::sort_watchlist_with_priority(
+        &refreshed,
+    ))
+}
+
+async fn fetch_all_episodes_best_effort(
+    sources: &atris_sources::SourceManager,
+    source_id: &str,
+    media_id: &str,
+    media_type: MediaType,
+) -> Result<Vec<Episode>, String> {
+    let details = sources
+        .get_details(source_id, media_id, media_type)
+        .await
+        .map_err(|e| e.to_string())?;
+    let mut episodes = Vec::new();
+    if details.seasons.is_empty() {
+        if let Ok(eps) = sources.get_episodes(source_id, media_id, 1).await {
+            episodes.extend(eps);
+        }
+        return Ok(episodes);
+    }
+
+    for season in &details.seasons {
+        if !season.episodes.is_empty() {
+            episodes.extend(season.episodes.iter().cloned());
+        } else if let Ok(eps) = sources
+            .get_episodes(source_id, media_id, season.season_number)
+            .await
+        {
+            episodes.extend(eps);
+        }
+    }
+    Ok(episodes)
 }
 
 #[tauri::command]

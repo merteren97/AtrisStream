@@ -12,6 +12,15 @@ interface WatchlistDao {
     @Query("SELECT * FROM watchlist ORDER BY addedAt DESC")
     fun observeAll(): Flow<List<WatchlistEntity>>
 
+    @Query("SELECT * FROM watchlist ORDER BY addedAt DESC")
+    suspend fun getAll(): List<WatchlistEntity>
+
+    @Query("SELECT * FROM watchlist WHERE keyId = :keyId LIMIT 1")
+    suspend fun getByKey(keyId: String): WatchlistEntity?
+
+    suspend fun getByKey(sourceId: String, mediaId: String): WatchlistEntity? =
+        getByKey(WatchlistEntity.buildKeyId(sourceId, mediaId))
+
     @Query("SELECT EXISTS(SELECT 1 FROM watchlist WHERE keyId = :keyId)")
     fun observeIsSavedByKey(keyId: String): Flow<Boolean>
 

@@ -229,6 +229,7 @@ impl JsonManifestProvider {
                     overview: None,
                     thumbnail_url: None,
                     runtime_minutes: None,
+                    is_released: true,
                 }
             })
             .collect()

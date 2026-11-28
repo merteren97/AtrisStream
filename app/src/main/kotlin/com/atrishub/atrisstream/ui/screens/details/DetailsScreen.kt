@@ -44,6 +44,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
@@ -133,6 +134,8 @@ fun DetailsScreen(
                     isSaved = isSaved,
                     mainCta = mainCta,
                     onToggleWatchlist = { viewModel.toggleWatchlist() },
+                    onMarkCurrentCompleted = { viewModel.markCurrentEpisodeCompleted() },
+                    onToggleEpisodeCompleted = { viewModel.toggleEpisodeCompleted(it) },
                     onSelectSeason = { viewModel.selectSeason(it) },
                     onPlayMain = {
                         val title = if (mainCta.seasonNumber != null && mainCta.episodeNumber != null) {
@@ -203,7 +206,8 @@ private fun resolveMainCta(
         )
     }
 
-    val firstEp = state.episodes.firstOrNull()
+    val releasedEpisodes = state.episodes.filter { it.isReleased }
+    val firstEp = releasedEpisodes.firstOrNull()
     if (latest != null && !latest.isCompleted) {
         val s = latest.seasonNumber ?: firstEp?.seasonNumber ?: state.selectedSeasonNumber
         val e = latest.episodeNumber ?: firstEp?.episodeNumber ?: 1
@@ -219,7 +223,7 @@ private fun resolveMainCta(
     if (latest != null && latest.isCompleted) {
         val lastS = latest.seasonNumber ?: state.selectedSeasonNumber
         val lastE = latest.episodeNumber ?: 0
-        val nextEp = state.episodes.firstOrNull { ep ->
+        val nextEp = releasedEpisodes.firstOrNull { ep ->
             val isAfter = ep.seasonNumber > lastS || (ep.seasonNumber == lastS && ep.episodeNumber > lastE)
             val epDone = state.episodeProgressMap[ep.seasonNumber to ep.episodeNumber]?.isCompleted == true
             isAfter && !epDone
@@ -249,6 +253,8 @@ private fun DetailsContent(
     isSaved: Boolean,
     mainCta: MainCtaTarget,
     onToggleWatchlist: () -> Unit,
+    onMarkCurrentCompleted: () -> Unit,
+    onToggleEpisodeCompleted: (Episode) -> Unit,
     onSelectSeason: (Int) -> Unit,
     onPlayMain: () -> Unit,
     onPlayEpisode: (Episode) -> Unit,
@@ -405,6 +411,25 @@ private fun DetailsContent(
                                 isPrimary = true,
                                 onClick = onPlayMain
                             )
+                            val partialLatest = state.latestProgress
+                            if ((details.type == MediaType.TV || details.type == MediaType.ANIME) &&
+                                partialLatest != null &&
+                                !partialLatest.isCompleted &&
+                                partialLatest.seasonNumber != null &&
+                                partialLatest.episodeNumber != null &&
+                                partialLatest.positionMs >= WatchProgressPolicy.MIN_RESUME_POSITION_MS
+                            ) {
+                                TvFocusButton(
+                                    text = stringResource(
+                                        R.string.details_finish_current,
+                                        partialLatest.seasonNumber!!,
+                                        partialLatest.episodeNumber!!
+                                    ),
+                                    icon = Icons.Default.CheckCircle,
+                                    isPrimary = false,
+                                    onClick = onMarkCurrentCompleted
+                                )
+                            }
                             TvFocusButton(
                                 text = stringResource(
                                     if (isSaved) R.string.details_remove_watchlist else R.string.details_add_watchlist
@@ -461,7 +486,8 @@ private fun DetailsContent(
                         EpisodeRowCard(
                             episode = episode,
                             progress = epProgress,
-                            onClick = { onPlayEpisode(episode) }
+                            onClick = { onPlayEpisode(episode) },
+                            onToggleCompleted = { onToggleEpisodeCompleted(episode) }
                         )
                     }
                 }
@@ -474,7 +500,8 @@ private fun DetailsContent(
 private fun EpisodeRowCard(
     episode: Episode,
     progress: WatchProgress?,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onToggleCompleted: () -> Unit
 ) {
     val context = LocalContext.current
     var isFocused by remember { mutableStateOf(false) }
@@ -482,113 +509,155 @@ private fun EpisodeRowCard(
         targetValue = if (isFocused) AtrisColors.ElevatedCard else AtrisColors.Surface,
         label = "epBg"
     )
+    val isReleased = episode.isReleased
+    val isCompleted = progress?.isCompleted == true
 
-    Surface(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .onFocusChanged { isFocused = it.isFocused }
-            .focusable()
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(12.dp),
-        color = bg,
-        border = BorderStroke(
-            width = if (isFocused) 2.dp else 1.dp,
-            color = if (isFocused) AtrisColors.AccentCyan else AtrisColors.CardBorder
-        )
+            .alpha(if (isReleased) 1f else 0.55f),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Row(
+        Surface(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                .weight(1f)
+                .onFocusChanged { isFocused = it.isFocused }
+                .focusable(enabled = isReleased)
+                .clickable(enabled = isReleased, onClick = onClick),
+            shape = RoundedCornerShape(12.dp),
+            color = bg,
+            border = BorderStroke(
+                width = if (isFocused) 2.dp else 1.dp,
+                color = if (isFocused) AtrisColors.AccentCyan else AtrisColors.CardBorder
+            )
         ) {
-            Box(
+            Row(
                 modifier = Modifier
-                    .size(width = 112.dp, height = 64.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(AtrisColors.ElevatedCard),
-                contentAlignment = Alignment.Center
+                    .fillMaxWidth()
+                    .padding(14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                val thumbUrl = episode.thumbnailUrl
-                if (!thumbUrl.isNullOrBlank()) {
-                    val thumbRequest = remember(thumbUrl) {
-                        ImageRequest.Builder(context)
-                            .data(thumbUrl)
-                            .size(400, 225)
-                            .precision(Precision.INEXACT)
-                            .build()
-                    }
-                    AsyncImage(
-                        model = thumbRequest,
-                        contentDescription = episode.title,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                } else {
-                    Icon(
-                        imageVector = Icons.Default.PlayArrow,
-                        contentDescription = null,
-                        tint = if (isFocused) AtrisColors.AccentCyan else AtrisColors.TextSecondary,
-                        modifier = Modifier.size(28.dp)
-                    )
-                }
-
-                if (progress != null && !progress.isCompleted &&
-                    progress.durationMs > 0L &&
-                    progress.positionMs >= WatchProgressPolicy.MIN_RESUME_POSITION_MS
+                Box(
+                    modifier = Modifier
+                        .size(width = 112.dp, height = 64.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(AtrisColors.ElevatedCard),
+                    contentAlignment = Alignment.Center
                 ) {
-                    val fraction = (progress.positionMs.toFloat() / progress.durationMs.toFloat()).coerceIn(0f, 1f)
-                    LinearProgressIndicator(
-                        progress = { fraction },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(3.dp)
-                            .align(Alignment.BottomCenter),
-                        color = AtrisColors.AccentCyan,
-                        trackColor = Color.White.copy(alpha = 0.25f)
+                    val thumbUrl = episode.thumbnailUrl
+                    if (!thumbUrl.isNullOrBlank()) {
+                        val thumbRequest = remember(thumbUrl) {
+                            ImageRequest.Builder(context)
+                                .data(thumbUrl)
+                                .size(400, 225)
+                                .precision(Precision.INEXACT)
+                                .build()
+                        }
+                        AsyncImage(
+                            model = thumbRequest,
+                            contentDescription = episode.title,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.PlayArrow,
+                            contentDescription = null,
+                            tint = if (isFocused) AtrisColors.AccentCyan else AtrisColors.TextSecondary,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+
+                    if (progress != null && !progress.isCompleted &&
+                        progress.durationMs > 0L &&
+                        progress.positionMs >= WatchProgressPolicy.MIN_RESUME_POSITION_MS
+                    ) {
+                        val fraction = (progress.positionMs.toFloat() / progress.durationMs.toFloat()).coerceIn(0f, 1f)
+                        LinearProgressIndicator(
+                            progress = { fraction },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(3.dp)
+                                .align(Alignment.BottomCenter),
+                            color = AtrisColors.AccentCyan,
+                            trackColor = Color.White.copy(alpha = 0.25f)
+                        )
+                    }
+                }
+
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.details_episode_label, episode.episodeNumber, episode.title),
+                            color = if (isFocused) AtrisColors.AccentCyan else AtrisColors.TextPrimary,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                        if (!isReleased) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(AtrisColors.TextSecondary.copy(alpha = 0.2f))
+                                    .padding(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.details_episode_upcoming),
+                                    color = AtrisColors.TextSecondary,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                    episode.overview?.takeIf { it.isNotBlank() }?.let { ov ->
+                        Text(
+                            text = ov,
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+
+                if (isCompleted) {
+                    Icon(
+                        imageVector = Icons.Default.CheckCircle,
+                        contentDescription = null,
+                        tint = AtrisColors.AccentCyan,
+                        modifier = Modifier.size(20.dp)
                     )
                 }
-            }
 
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Text(
-                    text = stringResource(R.string.details_episode_label, episode.episodeNumber, episode.title),
-                    color = if (isFocused) AtrisColors.AccentCyan else AtrisColors.TextPrimary,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                episode.overview?.takeIf { it.isNotBlank() }?.let { ov ->
+                episode.runtimeMinutes?.let { min ->
                     Text(
-                        text = ov,
-                        style = MaterialTheme.typography.bodyMedium,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
+                        text = stringResource(R.string.details_runtime_min, min),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = AtrisColors.TextSecondary
                     )
                 }
             }
+        }
 
-            if (progress?.isCompleted == true) {
-                Icon(
-                    imageVector = Icons.Default.CheckCircle,
-                    contentDescription = null,
-                    tint = AtrisColors.AccentCyan,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-
-            episode.runtimeMinutes?.let { min ->
-                Text(
-                    text = stringResource(R.string.details_runtime_min, min),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = AtrisColors.TextSecondary
-                )
-            }
+        if (isReleased) {
+            TvFocusButton(
+                text = stringResource(
+                    if (isCompleted) R.string.details_marked_watched else R.string.details_mark_finished
+                ),
+                icon = Icons.Default.CheckCircle,
+                isPrimary = isCompleted,
+                onClick = onToggleCompleted
+            )
         }
     }
 }

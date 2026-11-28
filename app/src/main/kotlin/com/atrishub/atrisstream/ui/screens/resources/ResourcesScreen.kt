@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -45,9 +46,18 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.atrishub.atrisstream.R
 import com.atrishub.atrisstream.core.model.InstalledSource
+import com.atrishub.atrisstream.core.model.MediaType
 import com.atrishub.atrisstream.core.sourceengine.SourceHealthResult
 import com.atrishub.atrisstream.ui.theme.AtrisColors
+import com.atrishub.atrisstream.ui.theme.TvFilterChip
 import com.atrishub.atrisstream.ui.theme.TvFocusButton
+
+private enum class ResourceCategoryFilter {
+    ALL,
+    MOVIE,
+    TV,
+    ANIME
+}
 
 @Composable
 fun ResourcesScreen(viewModel: ResourcesViewModel) {
@@ -57,8 +67,21 @@ fun ResourcesScreen(viewModel: ResourcesViewModel) {
     val lanUrl by viewModel.lanServerUrl.collectAsState()
     val lanStatus by viewModel.lanLastStatus.collectAsState()
     val lanPin by viewModel.lanPairingPin.collectAsState()
+    val primaryMovieId by viewModel.primaryMovieSourceId.collectAsState()
+    val primaryTvId by viewModel.primaryTvSourceId.collectAsState()
+    val primaryAnimeId by viewModel.primaryAnimeSourceId.collectAsState()
 
     var showAddDialog by remember { mutableStateOf(false) }
+    var selectedFilter by remember { mutableStateOf(ResourceCategoryFilter.ALL) }
+
+    val filteredSources = remember(sources, selectedFilter) {
+        when (selectedFilter) {
+            ResourceCategoryFilter.ALL -> sources
+            ResourceCategoryFilter.MOVIE -> sources.filter { MediaType.MOVIE in it.supportedTypes }
+            ResourceCategoryFilter.TV -> sources.filter { MediaType.TV in it.supportedTypes }
+            ResourceCategoryFilter.ANIME -> sources.filter { MediaType.ANIME in it.supportedTypes }
+        }
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -108,10 +131,47 @@ fun ResourcesScreen(viewModel: ResourcesViewModel) {
             )
         }
 
+        // Category filter chips
+        item(key = "category_filters") {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                item(key = "filter_all") {
+                    TvFilterChip(
+                        label = stringResource(R.string.resources_filter_all),
+                        selected = selectedFilter == ResourceCategoryFilter.ALL,
+                        onClick = { selectedFilter = ResourceCategoryFilter.ALL }
+                    )
+                }
+                item(key = "filter_movie") {
+                    TvFilterChip(
+                        label = stringResource(R.string.resources_filter_movies),
+                        selected = selectedFilter == ResourceCategoryFilter.MOVIE,
+                        onClick = { selectedFilter = ResourceCategoryFilter.MOVIE }
+                    )
+                }
+                item(key = "filter_tv") {
+                    TvFilterChip(
+                        label = stringResource(R.string.resources_filter_series),
+                        selected = selectedFilter == ResourceCategoryFilter.TV,
+                        onClick = { selectedFilter = ResourceCategoryFilter.TV }
+                    )
+                }
+                item(key = "filter_anime") {
+                    TvFilterChip(
+                        label = stringResource(R.string.resources_filter_anime),
+                        selected = selectedFilter == ResourceCategoryFilter.ANIME,
+                        onClick = { selectedFilter = ResourceCategoryFilter.ANIME }
+                    )
+                }
+            }
+        }
+
         // Installed sources list
-        items(sources, key = { it.id }) { source ->
+        items(filteredSources, key = { it.id }) { source ->
             SourceItemCard(
                 source = source,
+                isPrimaryMovie = source.id == primaryMovieId && MediaType.MOVIE in source.supportedTypes,
+                isPrimaryTv = source.id == primaryTvId && MediaType.TV in source.supportedTypes,
+                isPrimaryAnime = source.id == primaryAnimeId && MediaType.ANIME in source.supportedTypes,
                 isTesting = source.id in state.testingSourceIds,
                 healthResult = state.healthResults[source.id],
                 onToggleEnabled = { viewModel.setSourceEnabled(source.id, !source.enabled) },
@@ -231,6 +291,9 @@ private fun LanPasteCard(
 @Composable
 private fun SourceItemCard(
     source: InstalledSource,
+    isPrimaryMovie: Boolean,
+    isPrimaryTv: Boolean,
+    isPrimaryAnime: Boolean,
     isTesting: Boolean,
     healthResult: SourceHealthResult?,
     onToggleEnabled: () -> Unit,
@@ -273,9 +336,38 @@ private fun SourceItemCard(
                             color = AtrisColors.AccentCyan
                         )
                     }
+                    if (isPrimaryMovie) {
+                        BadgePill(
+                            text = stringResource(R.string.resources_primary_movie),
+                            color = AtrisColors.Success
+                        )
+                    }
+                    if (isPrimaryTv) {
+                        BadgePill(
+                            text = stringResource(R.string.resources_primary_tv),
+                            color = AtrisColors.Success
+                        )
+                    }
+                    if (isPrimaryAnime) {
+                        BadgePill(
+                            text = stringResource(R.string.resources_primary_anime),
+                            color = AtrisColors.Success
+                        )
+                    }
+                }
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    source.supportedTypes.forEach { mediaType ->
+                        BadgePill(
+                            text = mediaType.name,
+                            color = AtrisColors.TextSecondary
+                        )
+                    }
                 }
                 Text(
-                    text = "${source.baseUrl} • v${source.version} • ${source.supportedTypes.joinToString(", ") { it.name }}",
+                    text = "${source.baseUrl} • v${source.version}",
                     style = MaterialTheme.typography.bodyMedium
                 )
             }

@@ -13,7 +13,15 @@ data class WatchlistEntity(
     val posterUrl: String?,
     val year: Int?,
     val rating: Double?,
-    val addedAt: Long
+    val addedAt: Long,
+    val lastWatchedSeason: Int? = null,
+    val lastWatchedEpisode: Int? = null,
+    val knownEpisodeCount: Int = 0,
+    val latestAvailableSeason: Int? = null,
+    val latestAvailableEpisode: Int? = null,
+    val latestEpisodeCount: Int = 0,
+    val hasNewEpisode: Boolean = false,
+    val lastCheckedAt: Long = 0L
 ) {
     companion object {
         fun buildKeyId(sourceId: String, mediaId: String): String = "$sourceId:$mediaId"

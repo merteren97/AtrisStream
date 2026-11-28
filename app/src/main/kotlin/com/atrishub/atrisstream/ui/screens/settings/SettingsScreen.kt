@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.OpenInBrowser
@@ -31,6 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.atrishub.atrisstream.R
+import com.atrishub.atrisstream.core.model.MediaType
 import com.atrishub.atrisstream.ui.theme.AtrisColors
 import com.atrishub.atrisstream.ui.theme.TvFilterChip
 import com.atrishub.atrisstream.ui.theme.TvFocusButton
@@ -58,6 +61,15 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
     val quality by viewModel.preferredQuality.collectAsState()
     val subtitleLang by viewModel.preferredSubtitleLang.collectAsState()
     val appearance by viewModel.subtitleAppearance.collectAsState()
+    val enabledSources by viewModel.enabledSources.collectAsState()
+    val primaryMovieSourceId by viewModel.primaryMovieSourceId.collectAsState()
+    val primaryTvSourceId by viewModel.primaryTvSourceId.collectAsState()
+    val primaryAnimeSourceId by viewModel.primaryAnimeSourceId.collectAsState()
+    val trackSeriesNewEpisodes by viewModel.trackSeriesNewEpisodes.collectAsState()
+
+    val movieSources = enabledSources.filter { MediaType.MOVIE in it.supportedTypes }
+    val tvSources = enabledSources.filter { MediaType.TV in it.supportedTypes }
+    val animeSources = enabledSources.filter { MediaType.ANIME in it.supportedTypes }
 
     LazyColumn(
         modifier = Modifier
@@ -71,6 +83,100 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
                 text = stringResource(R.string.settings_title),
                 style = MaterialTheme.typography.headlineMedium
             )
+        }
+
+        // Primary Sources
+        item(key = "primary_sources") {
+            SettingsCard(title = stringResource(R.string.settings_primary_sources)) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        text = stringResource(R.string.settings_primary_sources_desc),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = AtrisColors.TextSecondary
+                    )
+
+                    if (movieSources.isNotEmpty()) {
+                        Text(
+                            text = stringResource(R.string.settings_primary_movies),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = AtrisColors.TextSecondary
+                        )
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            items(movieSources, key = { "movie_${it.id}" }) { source ->
+                                TvFilterChip(
+                                    label = source.name,
+                                    selected = primaryMovieSourceId == source.id,
+                                    onClick = { viewModel.setPrimaryMovieSourceId(source.id) }
+                                )
+                            }
+                        }
+                    }
+
+                    if (tvSources.isNotEmpty()) {
+                        Text(
+                            text = stringResource(R.string.settings_primary_series),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = AtrisColors.TextSecondary
+                        )
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            items(tvSources, key = { "tv_${it.id}" }) { source ->
+                                TvFilterChip(
+                                    label = source.name,
+                                    selected = primaryTvSourceId == source.id,
+                                    onClick = { viewModel.setPrimaryTvSourceId(source.id) }
+                                )
+                            }
+                        }
+                    }
+
+                    if (animeSources.isNotEmpty()) {
+                        Text(
+                            text = stringResource(R.string.settings_primary_anime),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = AtrisColors.TextSecondary
+                        )
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            items(animeSources, key = { "anime_${it.id}" }) { source ->
+                                TvFilterChip(
+                                    label = source.name,
+                                    selected = primaryAnimeSourceId == source.id,
+                                    onClick = { viewModel.setPrimaryAnimeSourceId(source.id) }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // New Episode Tracking
+        item(key = "episode_tracking") {
+            SettingsCard(title = stringResource(R.string.settings_new_episode_tracking)) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        text = stringResource(R.string.settings_new_episode_tracking_desc),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = AtrisColors.TextSecondary
+                    )
+                    Text(
+                        text = stringResource(R.string.settings_track_series_toggle),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = AtrisColors.TextSecondary
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        TvFilterChip(
+                            label = stringResource(R.string.settings_toggle_on),
+                            selected = trackSeriesNewEpisodes,
+                            onClick = { viewModel.setTrackSeriesNewEpisodes(true) }
+                        )
+                        TvFilterChip(
+                            label = stringResource(R.string.settings_toggle_off),
+                            selected = !trackSeriesNewEpisodes,
+                            onClick = { viewModel.setTrackSeriesNewEpisodes(false) }
+                        )
+                    }
+                }
+            }
         }
 
         // Language

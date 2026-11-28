@@ -1,9 +1,18 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { CheckCircle2, Cpu, Globe, Info, Subtitles, Tv } from "lucide-react";
+import {
+  BellRing,
+  CheckCircle2,
+  Cpu,
+  Globe,
+  Info,
+  Layers,
+  Subtitles,
+  Tv,
+} from "lucide-react";
 import { usePreferences } from "../hooks/usePreferences";
 import { api } from "../lib/tauri";
-import type { AppPreferences, PlayerEngine } from "../types/models";
+import type { AppPreferences, MediaType, PlayerEngine } from "../types/models";
 
 export function SettingsPage() {
   const { prefs, t, savePreferences } = usePreferences();
@@ -13,6 +22,19 @@ export function SettingsPage() {
     queryKey: ["playerCapabilities"],
     queryFn: api.getPlayerCapabilities,
   });
+
+  const { data: sources = [] } = useQuery({
+    queryKey: ["sources"],
+    queryFn: api.getSources,
+  });
+
+  const enabledSources = sources.filter((s) => s.enabled);
+  const sourcesForType = (type: MediaType) =>
+    enabledSources.filter((s) => s.supportedTypes.includes(type));
+
+  const movieSources = sourcesForType("MOVIE");
+  const tvSources = sourcesForType("TV");
+  const animeSources = sourcesForType("ANIME");
 
   const updatePrefs = async (patch: Partial<AppPreferences>) => {
     await savePreferences({ ...prefs, ...patch });
@@ -229,6 +251,132 @@ export function SettingsPage() {
             }}
             className="w-44 accent-[#38BDF8]"
           />
+        </div>
+      </section>
+
+      {/* Primary Sources */}
+      <section className="space-y-4 rounded-2xl border border-[#283347] bg-[#141923] p-5">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <Layers className="h-5 w-5 text-[#38BDF8]" />
+            <h2 className="text-base font-semibold text-[#F8FAFC]">
+              {t.settings.primarySources}
+            </h2>
+          </div>
+          <p className="text-xs text-[#94A3B8]">{t.settings.primarySourcesDesc}</p>
+        </div>
+
+        <div className="space-y-3 border-t border-[#283347] pt-4">
+          {/* Movies */}
+          <div className="flex items-center justify-between gap-4">
+            <span className="text-sm font-medium text-[#F8FAFC]">
+              {t.settings.primaryMovies}
+            </span>
+            <select
+              value={prefs.primaryMovieSourceId ?? movieSources[0]?.id ?? ""}
+              disabled={movieSources.length === 0}
+              onChange={(e) =>
+                updatePrefs({ primaryMovieSourceId: e.target.value || null })
+              }
+              className="min-w-[200px] rounded-xl border border-[#283347] bg-[#0B0E14] px-3 py-1.5 text-sm text-[#F8FAFC] outline-none focus:border-[#38BDF8] disabled:opacity-50"
+            >
+              {movieSources.length === 0 ? (
+                <option value="">{t.settings.noSourcesForType}</option>
+              ) : (
+                movieSources.map((src) => (
+                  <option key={src.id} value={src.id}>
+                    {src.name}
+                  </option>
+                ))
+              )}
+            </select>
+          </div>
+
+          {/* Series */}
+          <div className="flex items-center justify-between gap-4">
+            <span className="text-sm font-medium text-[#F8FAFC]">
+              {t.settings.primarySeries}
+            </span>
+            <select
+              value={prefs.primaryTvSourceId ?? tvSources[0]?.id ?? ""}
+              disabled={tvSources.length === 0}
+              onChange={(e) =>
+                updatePrefs({ primaryTvSourceId: e.target.value || null })
+              }
+              className="min-w-[200px] rounded-xl border border-[#283347] bg-[#0B0E14] px-3 py-1.5 text-sm text-[#F8FAFC] outline-none focus:border-[#38BDF8] disabled:opacity-50"
+            >
+              {tvSources.length === 0 ? (
+                <option value="">{t.settings.noSourcesForType}</option>
+              ) : (
+                tvSources.map((src) => (
+                  <option key={src.id} value={src.id}>
+                    {src.name}
+                  </option>
+                ))
+              )}
+            </select>
+          </div>
+
+          {/* Anime */}
+          <div className="flex items-center justify-between gap-4">
+            <span className="text-sm font-medium text-[#F8FAFC]">
+              {t.settings.primaryAnime}
+            </span>
+            <select
+              value={prefs.primaryAnimeSourceId ?? animeSources[0]?.id ?? "builtin_reanime"}
+              disabled={animeSources.length === 0}
+              onChange={(e) =>
+                updatePrefs({ primaryAnimeSourceId: e.target.value || null })
+              }
+              className="min-w-[200px] rounded-xl border border-[#283347] bg-[#0B0E14] px-3 py-1.5 text-sm text-[#F8FAFC] outline-none focus:border-[#38BDF8] disabled:opacity-50"
+            >
+              {animeSources.length === 0 ? (
+                <option value="">{t.settings.noSourcesForType}</option>
+              ) : (
+                animeSources.map((src) => (
+                  <option key={src.id} value={src.id}>
+                    {src.name}
+                  </option>
+                ))
+              )}
+            </select>
+          </div>
+        </div>
+      </section>
+
+      {/* Watchlist New Episode Tracking */}
+      <section className="space-y-4 rounded-2xl border border-[#283347] bg-[#141923] p-5">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <BellRing className="mt-0.5 h-5 w-5 shrink-0 text-[#818CF8]" />
+            <div>
+              <h2 className="text-base font-semibold text-[#F8FAFC]">
+                {t.settings.watchlistTrackingTitle}
+              </h2>
+              <p className="mt-0.5 text-sm font-medium text-[#F8FAFC]">
+                {t.settings.trackSeriesNewEpisodes}
+              </p>
+              <p className="mt-0.5 text-xs text-[#94A3B8]">
+                {t.settings.trackSeriesNewEpisodesDesc}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() =>
+              updatePrefs({
+                trackSeriesNewEpisodes: !(prefs.trackSeriesNewEpisodes ?? false),
+              })
+            }
+            className={`h-6 w-11 shrink-0 rounded-full transition-colors ${
+              prefs.trackSeriesNewEpisodes ? "bg-[#38BDF8]" : "bg-[#283347]"
+            }`}
+          >
+            <span
+              className={`block h-5 w-5 rounded-full bg-white transition-transform ${
+                prefs.trackSeriesNewEpisodes ? "translate-x-5" : "translate-x-0.5"
+              }`}
+            />
+          </button>
         </div>
       </section>
 

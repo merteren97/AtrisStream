@@ -3,6 +3,7 @@ package com.atrishub.atrisstream.ui.screens.browse
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.atrishub.atrisstream.core.database.preferences.UserPreferencesRepository
 import com.atrishub.atrisstream.core.model.MediaCard
 import com.atrishub.atrisstream.core.model.MediaProvider
 import com.atrishub.atrisstream.core.model.MediaType
@@ -13,6 +14,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 
 data class BrowseUiState(
@@ -29,24 +32,33 @@ data class BrowseUiState(
 
 class BrowseViewModel(
     private val mediaType: MediaType,
-    private val observeProviders: () -> Flow<List<MediaProvider>>
+    private val observeProviders: () -> Flow<List<MediaProvider>>,
+    private val observePrimarySourceId: () -> Flow<String> = { flowOf("") }
 ) : ViewModel() {
 
     constructor(
         mediaType: MediaType,
-        sourceManager: SourceManager
-    ) : this(mediaType, sourceManager::observeEnabledProviders)
+        sourceManager: SourceManager,
+        preferencesRepository: UserPreferencesRepository
+    ) : this(
+        mediaType = mediaType,
+        observeProviders = sourceManager::observeEnabledProviders,
+        observePrimarySourceId = { preferencesRepository.getPrimarySourceIdFlow(mediaType) }
+    )
 
     private val _uiState = MutableStateFlow(BrowseUiState(mediaType = mediaType))
     val uiState: StateFlow<BrowseUiState> = _uiState.asStateFlow()
 
+    private var userSelectedSourceId: String? = null
+
     init {
         viewModelScope.launch {
-            observeProviders().collectLatest { allProviders ->
-                val supporting = allProviders.filter { mediaType in it.manifest.supportedTypes }
-                val candidates = supporting.ifEmpty { allProviders }
-                val current = _uiState.value.selectedSourceId
-                val nextId = candidates.firstOrNull { it.manifest.id == current }?.manifest?.id
+            combine(observeProviders(), observePrimarySourceId()) { allProviders, primaryId ->
+                allProviders to primaryId
+            }.collectLatest { (allProviders, primaryId) ->
+                val candidates = allProviders.filter { mediaType in it.manifest.supportedTypes }
+                val nextId = candidates.firstOrNull { it.manifest.id == userSelectedSourceId }?.manifest?.id
+                    ?: candidates.firstOrNull { it.manifest.id == primaryId }?.manifest?.id
                     ?: candidates.firstOrNull()?.manifest?.id
                 _uiState.value = _uiState.value.copy(
                     providers = candidates,
@@ -58,6 +70,7 @@ class BrowseViewModel(
     }
 
     fun selectSource(sourceId: String) {
+        userSelectedSourceId = sourceId
         if (_uiState.value.selectedSourceId == sourceId) return
         _uiState.value = _uiState.value.copy(selectedSourceId = sourceId)
         viewModelScope.launch {
@@ -140,10 +153,11 @@ class BrowseViewModel(
 
     class Factory(
         private val mediaType: MediaType,
-        private val sourceManager: SourceManager
+        private val sourceManager: SourceManager,
+        private val preferencesRepository: UserPreferencesRepository
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T =
-            BrowseViewModel(mediaType, sourceManager) as T
+            BrowseViewModel(mediaType, sourceManager, preferencesRepository) as T
     }
 }

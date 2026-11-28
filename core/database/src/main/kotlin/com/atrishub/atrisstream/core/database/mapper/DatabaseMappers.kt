@@ -88,7 +88,15 @@ fun WatchlistEntity.toModel(): WatchlistItem = WatchlistItem(
     posterUrl = posterUrl,
     year = year,
     rating = rating,
-    addedAt = addedAt
+    addedAt = addedAt,
+    lastWatchedSeason = lastWatchedSeason,
+    lastWatchedEpisode = lastWatchedEpisode,
+    knownEpisodeCount = knownEpisodeCount,
+    latestAvailableSeason = latestAvailableSeason,
+    latestAvailableEpisode = latestAvailableEpisode,
+    latestEpisodeCount = latestEpisodeCount,
+    hasNewEpisode = hasNewEpisode,
+    lastCheckedAt = lastCheckedAt
 )
 
 fun WatchlistItem.toEntity(): WatchlistEntity = WatchlistEntity(
@@ -100,5 +108,13 @@ fun WatchlistItem.toEntity(): WatchlistEntity = WatchlistEntity(
     posterUrl = posterUrl,
     year = year,
     rating = rating,
-    addedAt = addedAt
+    addedAt = addedAt,
+    lastWatchedSeason = lastWatchedSeason,
+    lastWatchedEpisode = lastWatchedEpisode,
+    knownEpisodeCount = knownEpisodeCount,
+    latestAvailableSeason = latestAvailableSeason,
+    latestAvailableEpisode = latestAvailableEpisode,
+    latestEpisodeCount = latestEpisodeCount,
+    hasNewEpisode = hasNewEpisode,
+    lastCheckedAt = lastCheckedAt
 )

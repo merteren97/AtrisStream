@@ -93,6 +93,37 @@ class BrowseViewModelTest {
         assertFalse(state.hasNextPage)
     }
 
+    @Test
+    fun `filters providers strictly by mediaType and selects primarySourceId`() = runTest(testDispatcher) {
+        val movieProvider = FakeBrowseProvider(
+            id = "movie-only",
+            supportedTypes = listOf(MediaType.MOVIE),
+            pages = mapOf(1 to PagedResult(listOf(card(id = "m1", title = "Movie 1")), page = 1, hasNextPage = false))
+        )
+        val animeA = FakeBrowseProvider(
+            id = "animex",
+            supportedTypes = listOf(MediaType.ANIME),
+            pages = mapOf(1 to PagedResult(listOf(card(id = "a1", title = "Anime A")), page = 1, hasNextPage = false))
+        )
+        val animeB = FakeBrowseProvider(
+            id = "reanime",
+            supportedTypes = listOf(MediaType.ANIME),
+            pages = mapOf(1 to PagedResult(listOf(card(id = "b1", title = "Anime B")), page = 1, hasNextPage = false))
+        )
+
+        val vm = BrowseViewModel(
+            mediaType = MediaType.ANIME,
+            observeProviders = { flowOf(listOf(movieProvider, animeA, animeB)) },
+            observePrimarySourceId = { flowOf("reanime") }
+        )
+        advanceUntilIdle()
+
+        val state = vm.uiState.value
+        assertEquals(listOf("animex", "reanime"), state.providers.map { it.manifest.id })
+        assertEquals("reanime", state.selectedSourceId)
+        assertEquals(listOf("b1"), state.items.map { it.id })
+    }
+
     private fun card(id: String, title: String) = MediaCard(
         id = id,
         sourceId = "test-source",
@@ -101,14 +132,16 @@ class BrowseViewModelTest {
     )
 
     private class FakeBrowseProvider(
-        private val pages: Map<Int, PagedResult<MediaCard>>
+        private val pages: Map<Int, PagedResult<MediaCard>>,
+        private val id: String = "test-source",
+        private val supportedTypes: List<MediaType> = listOf(MediaType.MOVIE, MediaType.TV, MediaType.ANIME)
     ) : MediaProvider {
         override val manifest = ProviderManifest(
-            id = "test-source",
+            id = id,
             name = "Test Source",
             version = "1.0.0",
             baseUrl = "https://example.test",
-            supportedTypes = listOf(MediaType.MOVIE, MediaType.TV, MediaType.ANIME)
+            supportedTypes = supportedTypes
         )
 
         override suspend fun getHome(): List<HomeSection> = emptyList()

@@ -6,13 +6,21 @@ import com.atrishub.atrisstream.core.model.MediaProvider
 import com.atrishub.atrisstream.core.model.MediaType
 import com.atrishub.atrisstream.core.model.ProviderManifest
 import com.atrishub.atrisstream.core.model.SourceDriverType
+import com.atrishub.atrisstream.core.model.WatchlistTrackingPolicy
 import com.atrishub.atrisstream.core.network.AtrisNetworkClient
+import com.atrishub.atrisstream.core.sourceengine.animex.AnimeXProvider
 import com.atrishub.atrisstream.core.sourceengine.driver.JsPluginProvider
 import com.atrishub.atrisstream.core.sourceengine.driver.JsonManifestProvider
 import com.atrishub.atrisstream.core.sourceengine.movy.MovyProvider
+import com.atrishub.atrisstream.core.sourceengine.reanime.ReAnimeProvider
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -40,22 +48,49 @@ class SourceManager(
     private val providerCache = ConcurrentHashMap<String, CachedProvider>()
 
     suspend fun initialize() {
-        val existing = repository.getSourceById(MovyProvider.SOURCE_ID)
-        if (existing == null) {
-            repository.upsertSource(
-                InstalledSource(
-                    id = MovyProvider.SOURCE_ID,
-                    name = "Movy.sx (TR)",
-                    version = "1.0.0",
-                    baseUrl = MovyProvider.SITE_URL,
-                    driverType = SourceDriverType.BUILTIN,
-                    enabled = true,
-                    isBuiltIn = true,
-                    supportedTypes = listOf(MediaType.MOVIE, MediaType.TV, MediaType.ANIME),
-                    languages = listOf("tr", "en"),
-                    addedAt = System.currentTimeMillis()
-                )
+        val now = System.currentTimeMillis()
+        val builtIns = listOf(
+            InstalledSource(
+                id = MovyProvider.SOURCE_ID,
+                name = "Movy.sx (TR)",
+                version = "1.0.0",
+                baseUrl = MovyProvider.SITE_URL,
+                driverType = SourceDriverType.BUILTIN,
+                enabled = true,
+                isBuiltIn = true,
+                supportedTypes = listOf(MediaType.MOVIE, MediaType.TV, MediaType.ANIME),
+                languages = listOf("tr", "en"),
+                addedAt = now
+            ),
+            InstalledSource(
+                id = ReAnimeProvider.SOURCE_ID,
+                name = "ReAnime (Anime)",
+                version = "1.0.0",
+                baseUrl = ReAnimeProvider.SITE_URL,
+                driverType = SourceDriverType.BUILTIN,
+                enabled = true,
+                isBuiltIn = true,
+                supportedTypes = listOf(MediaType.ANIME),
+                languages = listOf("en"),
+                addedAt = now
+            ),
+            InstalledSource(
+                id = AnimeXProvider.SOURCE_ID,
+                name = "AnimeX (Anime)",
+                version = "1.0.0",
+                baseUrl = AnimeXProvider.SITE_URL,
+                driverType = SourceDriverType.BUILTIN,
+                enabled = true,
+                isBuiltIn = true,
+                supportedTypes = listOf(MediaType.ANIME),
+                languages = listOf("en"),
+                addedAt = now
             )
+        )
+        for (builtIn in builtIns) {
+            if (repository.getSourceById(builtIn.id) == null) {
+                repository.upsertSource(builtIn)
+            }
         }
     }
 
@@ -71,12 +106,54 @@ class SourceManager(
         if (source != null) {
             return buildProvider(source)
         }
-        if (sourceId == MovyProvider.SOURCE_ID) {
-            return providerCache.getOrPut(sourceId) {
-                CachedProvider("builtin", MovyProvider(networkClient))
-            }.provider
+        val fallback = createBuiltInProvider(sourceId) ?: return null
+        return providerCache.getOrPut(sourceId) {
+            CachedProvider("builtin", fallback)
+        }.provider
+    }
+
+    suspend fun refreshWatchlistNewEpisodes(trackSeries: Boolean): Int = coroutineScope {
+        val items = repository.getAllWatchlistItems()
+        val targets = items.filter { item ->
+            item.type == MediaType.ANIME || (item.type == MediaType.TV && trackSeries)
         }
-        return null
+        if (targets.isEmpty()) return@coroutineScope 0
+
+        val semaphore = Semaphore(3)
+        val nowMs = System.currentTimeMillis()
+        val results = targets.map { item ->
+            async {
+                semaphore.withPermit {
+                    runCatching {
+                        val provider = getProvider(item.sourceId) ?: return@withPermit false
+                        val details = provider.getDetails(item.mediaId, item.type)
+                        val episodes = if (details.seasons.isNotEmpty()) {
+                            details.seasons.flatMap { season ->
+                                season.episodes.ifEmpty {
+                                    runCatching { provider.getEpisodes(item.mediaId, season.seasonNumber) }
+                                        .getOrDefault(emptyList())
+                                }
+                            }
+                        } else {
+                            runCatching { provider.getEpisodes(item.mediaId, 1) }.getOrDefault(emptyList())
+                        }
+                        val progressList = repository.getAllProgressForMedia(item.sourceId, item.mediaId)
+                        val updated = WatchlistTrackingPolicy.evaluateWatchlistUpdate(
+                            item = item,
+                            releasedEpisodes = episodes,
+                            progressList = progressList,
+                            nowMs = nowMs
+                        )
+                        if (updated != item) {
+                            repository.upsertWatchlistItem(updated)
+                        }
+                        updated.hasNewEpisode && !item.hasNewEpisode
+                    }.getOrDefault(false)
+                }
+            }
+        }.awaitAll()
+
+        results.count { it }
     }
 
     suspend fun addSourceFromUrl(url: String): Result<List<InstalledSource>> = runCatching {
@@ -169,9 +246,7 @@ class SourceManager(
         }
 
         val created: MediaProvider? = when (source.driverType) {
-            SourceDriverType.BUILTIN -> {
-                if (source.id == MovyProvider.SOURCE_ID) MovyProvider(networkClient) else null
-            }
+            SourceDriverType.BUILTIN -> createBuiltInProvider(source.id)
             SourceDriverType.JSON_MANIFEST -> {
                 val raw = source.rawConfig ?: return null
                 runCatching {
@@ -196,6 +271,13 @@ class SourceManager(
             providerCache[source.id] = CachedProvider(key, created)
         }
         return created
+    }
+
+    private fun createBuiltInProvider(sourceId: String): MediaProvider? = when (sourceId) {
+        MovyProvider.SOURCE_ID -> MovyProvider(networkClient)
+        ReAnimeProvider.SOURCE_ID -> ReAnimeProvider(networkClient)
+        AnimeXProvider.SOURCE_ID -> AnimeXProvider(networkClient)
+        else -> null
     }
 
     @Serializable

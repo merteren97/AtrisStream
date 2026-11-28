@@ -80,6 +80,8 @@ fun TvPosterCard(
     width: Dp = 148.dp,
     progressFraction: Float? = null,
     badgeText: String? = null,
+    badgeColor: Color = AtrisColors.AccentCyan,
+    highlightBorder: Boolean = false,
     onLongClick: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
@@ -90,7 +92,11 @@ fun TvPosterCard(
         label = "posterScale"
     )
     val borderColor by animateColorAsState(
-        targetValue = if (isFocused) AtrisColors.AccentCyan else AtrisColors.CardBorder.copy(alpha = 0.45f),
+        targetValue = when {
+            isFocused -> AtrisColors.AccentCyan
+            highlightBorder -> Color(0xFF10B981)
+            else -> AtrisColors.CardBorder.copy(alpha = 0.45f)
+        },
         animationSpec = tween(durationMillis = 150),
         label = "posterBorder"
     )
@@ -145,7 +151,7 @@ fun TvPosterCard(
                 .clip(RoundedCornerShape(12.dp))
                 .background(AtrisColors.ElevatedCard)
                 .border(
-                    width = if (isFocused) 2.5.dp else 1.dp,
+                    width = if (isFocused || highlightBorder) 2.5.dp else 1.dp,
                     color = borderColor,
                     shape = RoundedCornerShape(12.dp)
                 )
@@ -205,7 +211,7 @@ fun TvPosterCard(
                 ) {
                     Text(
                         text = topBadge,
-                        color = AtrisColors.AccentCyan,
+                        color = badgeColor,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold
                     )

@@ -27,12 +27,16 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -56,6 +60,7 @@ import com.atrishub.atrisstream.core.model.MediaCard
 import com.atrishub.atrisstream.core.model.MediaType
 import com.atrishub.atrisstream.core.model.PlayerLaunchArgs
 import com.atrishub.atrisstream.core.model.WatchProgress
+import com.atrishub.atrisstream.core.model.WatchlistItem
 import com.atrishub.atrisstream.ui.theme.AtrisColors
 import com.atrishub.atrisstream.ui.theme.TvErrorBanner
 import com.atrishub.atrisstream.ui.theme.TvFilterChip
@@ -72,7 +77,19 @@ fun HomeScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     val continueWatching by viewModel.continueWatching.collectAsState()
+    val newEpisodeWatchlistItems by viewModel.newEpisodeWatchlistItems.collectAsState()
     var selectedProgressForMenu by remember { mutableStateOf<WatchProgress?>(null) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    DisposableEffect(lifecycleOwner, viewModel) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.refreshWatchlistIfStale()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -147,6 +164,18 @@ fun HomeScreen(
                         onOpenDetails(featured.sourceId, featured.id, featured.type)
                     },
                     modifier = Modifier.padding(horizontal = 24.dp)
+                )
+            }
+        }
+
+        // New Episodes in Watchlist row (top priority)
+        if (newEpisodeWatchlistItems.isNotEmpty()) {
+            item(key = "new_episodes_watchlist") {
+                NewEpisodesWatchlistRow(
+                    items = newEpisodeWatchlistItems,
+                    onClick = { item ->
+                        onOpenDetails(item.sourceId, item.mediaId, item.type)
+                    }
                 )
             }
         }
@@ -418,6 +447,64 @@ private fun HeroSpotlightBanner(
                     icon = Icons.Default.Info,
                     isPrimary = false,
                     onClick = onDetails
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun NewEpisodesWatchlistRow(
+    items: List<WatchlistItem>,
+    onClick: (WatchlistItem) -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text(
+            text = stringResource(R.string.home_new_episodes_watchlist),
+            style = MaterialTheme.typography.titleLarge,
+            color = Color(0xFF10B981),
+            modifier = Modifier.padding(horizontal = 24.dp)
+        )
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 24.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            items(
+                items = items,
+                key = { "new_ep_${it.sourceId}_${it.type.name}_${it.mediaId}" },
+                contentType = { "new_episode_watchlist_card" }
+            ) { item ->
+                val newBadge = when {
+                    item.latestAvailableSeason != null && item.latestAvailableEpisode != null ->
+                        stringResource(R.string.watchlist_badge_new_se, item.latestAvailableSeason!!, item.latestAvailableEpisode!!)
+                    item.latestAvailableEpisode != null ->
+                        stringResource(R.string.watchlist_badge_new_ep, item.latestAvailableEpisode!!)
+                    else -> stringResource(R.string.watchlist_filter_new)
+                }
+                val subtitle = item.lastWatchedEpisode?.let { ep ->
+                    stringResource(R.string.watchlist_watched_ep, ep)
+                } ?: item.type.name
+                val card = remember(item, subtitle) {
+                    MediaCard(
+                        id = item.mediaId,
+                        sourceId = item.sourceId,
+                        title = item.title,
+                        posterUrl = item.posterUrl,
+                        type = item.type,
+                        year = item.year,
+                        rating = item.rating,
+                        subtitle = subtitle
+                    )
+                }
+                TvPosterCard(
+                    item = card,
+                    onClick = { onClick(item) },
+                    badgeText = newBadge,
+                    badgeColor = Color(0xFF10B981),
+                    highlightBorder = true
                 )
             }
         }

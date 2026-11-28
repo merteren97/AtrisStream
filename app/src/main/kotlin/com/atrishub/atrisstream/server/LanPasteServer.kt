@@ -160,7 +160,9 @@ object LanSyncMerger {
         for (candidate in incoming) {
             val key = WatchlistKey(candidate.sourceId, candidate.mediaId)
             val existing = byKey[key]
-            val shouldTakeIncoming = existing == null || candidate.addedAt > existing.addedAt
+            val shouldTakeIncoming = existing == null ||
+                candidate.addedAt > existing.addedAt ||
+                (candidate.addedAt == existing.addedAt && candidate.lastCheckedAt > existing.lastCheckedAt)
             if (shouldTakeIncoming) {
                 byKey[key] = candidate
                 toUpsert += candidate

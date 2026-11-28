@@ -172,6 +172,7 @@ export function PlayerOverlay({ session }: PlayerOverlayProps) {
           isEnded
         );
         queryClient.invalidateQueries({ queryKey: ["continueWatching"] });
+        queryClient.invalidateQueries({ queryKey: ["watchlist"] });
         queryClient.invalidateQueries({
           queryKey: ["allProgress", session.sourceId, session.mediaId],
         });
@@ -217,8 +218,11 @@ export function PlayerOverlay({ session }: PlayerOverlayProps) {
         e.seasonNumber === session.seasonNumber &&
         e.episodeNumber === session.episodeNumber
     );
-    if (idx >= 0 && idx + 1 < session.episodes.length) {
-      return session.episodes[idx + 1];
+    if (idx >= 0) {
+      return (
+        session.episodes.slice(idx + 1).find((e) => e.isReleased !== false) ??
+        null
+      );
     }
     return null;
   }, [session.episodes, session.seasonNumber, session.episodeNumber]);
@@ -233,6 +237,14 @@ export function PlayerOverlay({ session }: PlayerOverlayProps) {
         session.episodeNumber
       )
       .catch(() => {});
+    queryClient.invalidateQueries({ queryKey: ["continueWatching"] });
+    queryClient.invalidateQueries({ queryKey: ["watchlist"] });
+    queryClient.invalidateQueries({
+      queryKey: ["allProgress", session.sourceId, session.mediaId],
+    });
+    queryClient.invalidateQueries({
+      queryKey: ["latestProgress", session.sourceId, session.mediaId],
+    });
     if (useLibmpv) {
       await api.mpvStop().catch(() => {});
     }
@@ -247,7 +259,7 @@ export function PlayerOverlay({ session }: PlayerOverlayProps) {
       episodeTitle: nextEpisode.title,
       resumePositionMs: 0,
     });
-  }, [nextEpisode, openPlayer, session, useLibmpv]);
+  }, [nextEpisode, openPlayer, queryClient, session, useLibmpv]);
 
   const allSubtitlesRef = useRef(allSubtitles);
   allSubtitlesRef.current = allSubtitles;

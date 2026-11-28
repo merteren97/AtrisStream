@@ -1,6 +1,6 @@
 use atris_core::{
     AppPreferences, InstalledSource, MediaType, PairedDevice, SourceDriverType, SyncPayload,
-    SyncSummary, WatchProgress, WatchProgressPolicy, WatchlistItem,
+    SyncSummary, WatchProgress, WatchProgressPolicy, WatchlistItem, WatchlistTrackingPolicy,
 };
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use std::collections::HashSet;
@@ -102,7 +102,15 @@ impl AtrisStorage {
                 poster_url TEXT,
                 year INTEGER,
                 rating REAL,
-                added_at INTEGER NOT NULL
+                added_at INTEGER NOT NULL,
+                last_watched_season INTEGER,
+                last_watched_episode INTEGER,
+                known_episode_count INTEGER NOT NULL DEFAULT 0,
+                latest_available_season INTEGER,
+                latest_available_episode INTEGER,
+                latest_episode_count INTEGER NOT NULL DEFAULT 0,
+                has_new_episode INTEGER NOT NULL DEFAULT 0,
+                last_checked_at INTEGER NOT NULL DEFAULT 0
             );
 
             CREATE TABLE IF NOT EXISTS preferences (
@@ -119,6 +127,35 @@ impl AtrisStorage {
                 last_synced_at INTEGER
             );",
         )?;
+
+        // Safely migrate existing watchlist tables missing the new tracking columns.
+        let mut existing_cols = HashSet::new();
+        {
+            let mut stmt = conn.prepare("PRAGMA table_info(watchlist)")?;
+            let rows = stmt.query_map([], |row| row.get::<_, String>(1))?;
+            for col in rows {
+                existing_cols.insert(col?);
+            }
+        }
+        let migrations = [
+            ("last_watched_season", "INTEGER"),
+            ("last_watched_episode", "INTEGER"),
+            ("known_episode_count", "INTEGER NOT NULL DEFAULT 0"),
+            ("latest_available_season", "INTEGER"),
+            ("latest_available_episode", "INTEGER"),
+            ("latest_episode_count", "INTEGER NOT NULL DEFAULT 0"),
+            ("has_new_episode", "INTEGER NOT NULL DEFAULT 0"),
+            ("last_checked_at", "INTEGER NOT NULL DEFAULT 0"),
+        ];
+        for (col_name, col_def) in migrations {
+            if !existing_cols.contains(col_name) {
+                conn.execute(
+                    &format!("ALTER TABLE watchlist ADD COLUMN {col_name} {col_def}"),
+                    [],
+                )?;
+            }
+        }
+
         Ok(())
     }
 
@@ -304,33 +341,47 @@ impl AtrisStorage {
     }
 
     pub fn upsert_watch_progress(&self, progress: &WatchProgress) -> Result<(), StorageError> {
-        let conn = self.lock()?;
-        let key_id = WatchProgressPolicy::build_watch_key(
-            &progress.source_id,
-            &progress.media_id,
-            progress.season_number,
-            progress.episode_number,
-        );
-        conn.execute(
-            "INSERT OR REPLACE INTO watch_progress
-             (key_id, media_id, source_id, type, title, poster_url, season_number, episode_number,
-              position_ms, duration_ms, updated_at, is_completed)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
-            params![
-                key_id,
-                progress.media_id,
-                progress.source_id,
-                media_type_to_str(progress.r#type),
-                progress.title,
-                progress.poster_url,
+        {
+            let conn = self.lock()?;
+            let key_id = WatchProgressPolicy::build_watch_key(
+                &progress.source_id,
+                &progress.media_id,
                 progress.season_number,
                 progress.episode_number,
-                progress.position_ms,
-                progress.duration_ms,
-                progress.updated_at,
-                if progress.is_completed { 1 } else { 0 },
-            ],
-        )?;
+            );
+            conn.execute(
+                "INSERT OR REPLACE INTO watch_progress
+                 (key_id, media_id, source_id, type, title, poster_url, season_number, episode_number,
+                  position_ms, duration_ms, updated_at, is_completed)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                params![
+                    key_id,
+                    progress.media_id,
+                    progress.source_id,
+                    media_type_to_str(progress.r#type),
+                    progress.title,
+                    progress.poster_url,
+                    progress.season_number,
+                    progress.episode_number,
+                    progress.position_ms,
+                    progress.duration_ms,
+                    progress.updated_at,
+                    if progress.is_completed { 1 } else { 0 },
+                ],
+            )?;
+        }
+        if progress.is_completed {
+            if let Some(item) = self.get_watchlist_item(&progress.source_id, &progress.media_id)? {
+                let updated = WatchlistTrackingPolicy::on_episode_marked_completed(
+                    &item,
+                    progress.season_number,
+                    progress.episode_number,
+                    None,
+                    progress.updated_at.max(now_ms()),
+                );
+                self.upsert_watchlist_item(&updated)?;
+            }
+        }
         Ok(())
     }
 
@@ -341,13 +392,98 @@ impl AtrisStorage {
         season: Option<i32>,
         episode: Option<i32>,
     ) -> Result<(), StorageError> {
-        let conn = self.lock()?;
-        let key_id = WatchProgressPolicy::build_watch_key(source_id, media_id, season, episode);
         let now = now_ms();
-        conn.execute(
-            "UPDATE watch_progress SET is_completed = 1, updated_at = ?1 WHERE key_id = ?2",
-            params![now, key_id],
-        )?;
+        {
+            let conn = self.lock()?;
+            let key_id = WatchProgressPolicy::build_watch_key(source_id, media_id, season, episode);
+            conn.execute(
+                "UPDATE watch_progress SET is_completed = 1, updated_at = ?1 WHERE key_id = ?2",
+                params![now, key_id],
+            )?;
+        }
+        if let Some(item) = self.get_watchlist_item(source_id, media_id)? {
+            let updated = WatchlistTrackingPolicy::on_episode_marked_completed(
+                &item, season, episode, None, now,
+            );
+            self.upsert_watchlist_item(&updated)?;
+        }
+        Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn set_episode_completed(
+        &self,
+        source_id: &str,
+        media_id: &str,
+        media_type: MediaType,
+        title: &str,
+        poster_url: Option<&str>,
+        season: Option<i32>,
+        episode: Option<i32>,
+        completed: bool,
+        released_count: Option<i32>,
+    ) -> Result<(), StorageError> {
+        let now = now_ms();
+        let key_id = WatchProgressPolicy::build_watch_key(source_id, media_id, season, episode);
+        let existing = self.get_watch_progress_by_key(&key_id)?;
+        let (position_ms, duration_ms, resolved_title, resolved_poster) = match existing {
+            Some(prev) => (
+                prev.position_ms,
+                prev.duration_ms,
+                if title.trim().is_empty() {
+                    prev.title
+                } else {
+                    title.to_string()
+                },
+                poster_url.map(String::from).or(prev.poster_url),
+            ),
+            None => (
+                0,
+                0,
+                title.to_string(),
+                poster_url.map(String::from),
+            ),
+        };
+
+        {
+            let conn = self.lock()?;
+            conn.execute(
+                "INSERT OR REPLACE INTO watch_progress
+                 (key_id, media_id, source_id, type, title, poster_url, season_number, episode_number,
+                  position_ms, duration_ms, updated_at, is_completed)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                params![
+                    key_id,
+                    media_id,
+                    source_id,
+                    media_type_to_str(media_type),
+                    resolved_title,
+                    resolved_poster,
+                    season,
+                    episode,
+                    position_ms,
+                    duration_ms,
+                    now,
+                    if completed { 1 } else { 0 },
+                ],
+            )?;
+        }
+
+        if let Some(item) = self.get_watchlist_item(source_id, media_id)? {
+            let updated = if completed {
+                WatchlistTrackingPolicy::on_episode_marked_completed(
+                    &item,
+                    season,
+                    episode,
+                    released_count,
+                    now,
+                )
+            } else {
+                let remaining = self.get_all_progress_for_media(source_id, media_id)?;
+                WatchlistTrackingPolicy::on_episode_unmarked(&item, &remaining, now)
+            };
+            self.upsert_watchlist_item(&updated)?;
+        }
         Ok(())
     }
 
@@ -371,9 +507,12 @@ impl AtrisStorage {
     pub fn get_watchlist(&self) -> Result<Vec<WatchlistItem>, StorageError> {
         let conn = self.lock()?;
         let mut stmt = conn.prepare(
-            "SELECT media_id, source_id, type, title, poster_url, year, rating, added_at
+            "SELECT media_id, source_id, type, title, poster_url, year, rating, added_at,
+                    last_watched_season, last_watched_episode, known_episode_count,
+                    latest_available_season, latest_available_episode, latest_episode_count,
+                    has_new_episode, last_checked_at
              FROM watchlist
-             ORDER BY added_at DESC",
+             ORDER BY has_new_episode DESC, added_at DESC",
         )?;
         let rows = stmt.query_map([], map_watchlist_row)?;
         let mut out = Vec::new();
@@ -403,8 +542,11 @@ impl AtrisStorage {
         let key_id = format!("{}:{}", item.source_id, item.media_id);
         conn.execute(
             "INSERT OR REPLACE INTO watchlist
-             (key_id, media_id, source_id, type, title, poster_url, year, rating, added_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+             (key_id, media_id, source_id, type, title, poster_url, year, rating, added_at,
+              last_watched_season, last_watched_episode, known_episode_count,
+              latest_available_season, latest_available_episode, latest_episode_count,
+              has_new_episode, last_checked_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
             params![
                 key_id,
                 item.media_id,
@@ -415,6 +557,14 @@ impl AtrisStorage {
                 item.year,
                 item.rating,
                 item.added_at,
+                item.last_watched_season,
+                item.last_watched_episode,
+                item.known_episode_count,
+                item.latest_available_season,
+                item.latest_available_episode,
+                item.latest_episode_count,
+                if item.has_new_episode { 1 } else { 0 },
+                item.last_checked_at,
             ],
         )?;
         Ok(())
@@ -577,12 +727,16 @@ impl AtrisStorage {
             }
         }
 
-        // 3. Merge watchlist (union / newer added_at)
+        // 3. Merge watchlist (union / newer added_at or last_checked_at)
         for item in &remote.watchlist {
             let existing = self.get_watchlist_item(&item.source_id, &item.media_id)?;
             let should_upsert = match existing {
                 None => true,
-                Some(ref local) => item.added_at > local.added_at,
+                Some(ref local) => {
+                    item.added_at > local.added_at
+                        || (item.added_at == local.added_at
+                            && item.last_checked_at > local.last_checked_at)
+                }
             };
             if should_upsert {
                 self.upsert_watchlist_item(item)?;
@@ -625,7 +779,7 @@ impl AtrisStorage {
         .map_err(Into::into)
     }
 
-    fn get_watchlist_item(
+    pub fn get_watchlist_item(
         &self,
         source_id: &str,
         media_id: &str,
@@ -633,7 +787,10 @@ impl AtrisStorage {
         let conn = self.lock()?;
         let key_id = format!("{source_id}:{media_id}");
         conn.query_row(
-            "SELECT media_id, source_id, type, title, poster_url, year, rating, added_at
+            "SELECT media_id, source_id, type, title, poster_url, year, rating, added_at,
+                    last_watched_season, last_watched_episode, known_episode_count,
+                    latest_available_season, latest_available_episode, latest_episode_count,
+                    has_new_episode, last_checked_at
              FROM watchlist WHERE key_id = ?1 LIMIT 1",
             params![key_id],
             map_watchlist_row,
@@ -729,6 +886,7 @@ fn map_watch_progress_row(row: &Row<'_>) -> rusqlite::Result<WatchProgress> {
 
 fn map_watchlist_row(row: &Row<'_>) -> rusqlite::Result<WatchlistItem> {
     let type_str: String = row.get(2)?;
+    let has_new_int: i64 = row.get(14)?;
     Ok(WatchlistItem {
         media_id: row.get(0)?,
         source_id: row.get(1)?,
@@ -738,6 +896,14 @@ fn map_watchlist_row(row: &Row<'_>) -> rusqlite::Result<WatchlistItem> {
         year: row.get(5)?,
         rating: row.get(6)?,
         added_at: row.get(7)?,
+        last_watched_season: row.get(8)?,
+        last_watched_episode: row.get(9)?,
+        known_episode_count: row.get(10)?,
+        latest_available_season: row.get(11)?,
+        latest_available_episode: row.get(12)?,
+        latest_episode_count: row.get(13)?,
+        has_new_episode: has_new_int != 0,
+        last_checked_at: row.get(15)?,
     })
 }
 
@@ -943,6 +1109,14 @@ mod tests {
                 year: Some(1999),
                 rating: Some(8.4),
                 added_at: 1000,
+                last_watched_season: None,
+                last_watched_episode: None,
+                known_episode_count: 0,
+                latest_available_season: None,
+                latest_available_episode: None,
+                latest_episode_count: 0,
+                has_new_episode: false,
+                last_checked_at: 0,
             }],
         };
 
@@ -969,5 +1143,157 @@ mod tests {
         assert!(storage
             .is_saved_to_watchlist("builtin_movy_sx", "550")
             .unwrap());
+    }
+
+    #[test]
+    fn migrates_legacy_watchlist_table_safely() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE watchlist (
+                key_id TEXT PRIMARY KEY,
+                media_id TEXT NOT NULL,
+                source_id TEXT NOT NULL,
+                type TEXT NOT NULL,
+                title TEXT NOT NULL,
+                poster_url TEXT,
+                year INTEGER,
+                rating REAL,
+                added_at INTEGER NOT NULL
+            );
+            INSERT INTO watchlist (key_id, media_id, source_id, type, title, added_at)
+            VALUES ('builtin_reanime:solo', 'solo', 'builtin_reanime', 'ANIME', 'Solo', 1234);",
+        )
+        .unwrap();
+
+        let storage = AtrisStorage {
+            conn: Arc::new(Mutex::new(conn)),
+        };
+        storage.init_schema().unwrap();
+
+        let items = storage.get_watchlist().unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].known_episode_count, 0);
+        assert!(!items[0].has_new_episode);
+    }
+
+    #[test]
+    fn set_episode_completed_upserts_and_updates_watchlist_tracking() {
+        let storage = AtrisStorage::open_in_memory().unwrap();
+        storage
+            .upsert_watchlist_item(&WatchlistItem {
+                media_id: "solo".into(),
+                source_id: "builtin_reanime".into(),
+                r#type: MediaType::ANIME,
+                title: "Solo Leveling".into(),
+                poster_url: None,
+                year: Some(2024),
+                rating: None,
+                added_at: 1000,
+                last_watched_season: Some(1),
+                last_watched_episode: Some(2),
+                known_episode_count: 2,
+                latest_available_season: Some(1),
+                latest_available_episode: Some(3),
+                latest_episode_count: 3,
+                has_new_episode: true,
+                last_checked_at: 2000,
+            })
+            .unwrap();
+
+        storage
+            .set_episode_completed(
+                "builtin_reanime",
+                "solo",
+                MediaType::ANIME,
+                "Solo Leveling",
+                None,
+                Some(1),
+                Some(3),
+                true,
+                Some(3),
+            )
+            .unwrap();
+
+        let all_progress = storage
+            .get_all_progress_for_media("builtin_reanime", "solo")
+            .unwrap();
+        assert_eq!(all_progress.len(), 1);
+        assert!(all_progress[0].is_completed);
+
+        let wl = storage
+            .get_watchlist_item("builtin_reanime", "solo")
+            .unwrap()
+            .unwrap();
+        assert!(!wl.has_new_episode);
+        assert_eq!(wl.last_watched_episode, Some(3));
+        assert_eq!(wl.known_episode_count, 3);
+
+        // Unmarking ep 3 when no earlier completed rows exist clears last_watched
+        storage
+            .set_episode_completed(
+                "builtin_reanime",
+                "solo",
+                MediaType::ANIME,
+                "Solo Leveling",
+                None,
+                Some(1),
+                Some(3),
+                false,
+                Some(3),
+            )
+            .unwrap();
+        let wl_after_unmark = storage
+            .get_watchlist_item("builtin_reanime", "solo")
+            .unwrap()
+            .unwrap();
+        assert_eq!(wl_after_unmark.last_watched_season, None);
+        assert_eq!(wl_after_unmark.last_watched_episode, None);
+
+        // If ep 1 & ep 2 are completed and ep 2 is unmarked, last_watched falls back to ep 1
+        storage
+            .set_episode_completed(
+                "builtin_reanime",
+                "solo",
+                MediaType::ANIME,
+                "Solo Leveling",
+                None,
+                Some(1),
+                Some(1),
+                true,
+                Some(3),
+            )
+            .unwrap();
+        storage
+            .set_episode_completed(
+                "builtin_reanime",
+                "solo",
+                MediaType::ANIME,
+                "Solo Leveling",
+                None,
+                Some(1),
+                Some(2),
+                true,
+                Some(3),
+            )
+            .unwrap();
+        storage
+            .set_episode_completed(
+                "builtin_reanime",
+                "solo",
+                MediaType::ANIME,
+                "Solo Leveling",
+                None,
+                Some(1),
+                Some(2),
+                false,
+                Some(3),
+            )
+            .unwrap();
+        let wl_fallback = storage
+            .get_watchlist_item("builtin_reanime", "solo")
+            .unwrap()
+            .unwrap();
+        assert_eq!(wl_fallback.last_watched_season, Some(1));
+        assert_eq!(wl_fallback.last_watched_episode, Some(1));
     }
 }

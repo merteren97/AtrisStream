@@ -3,6 +3,7 @@ package com.atrishub.atrisstream.ui.screens.resources
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.atrishub.atrisstream.core.database.preferences.UserPreferencesRepository
 import com.atrishub.atrisstream.core.model.InstalledSource
 import com.atrishub.atrisstream.core.sourceengine.SourceHealthResult
 import com.atrishub.atrisstream.core.sourceengine.SourceManager
@@ -24,11 +25,21 @@ data class ResourcesUiState(
 
 class ResourcesViewModel(
     private val sourceManager: SourceManager,
-    private val lanPasteServer: LanPasteServer
+    private val lanPasteServer: LanPasteServer,
+    private val preferencesRepository: UserPreferencesRepository
 ) : ViewModel() {
 
     val sources: StateFlow<List<InstalledSource>> = sourceManager.observeSources()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val primaryMovieSourceId: StateFlow<String> = preferencesRepository.primaryMovieSourceId
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "builtin_movy_sx")
+
+    val primaryTvSourceId: StateFlow<String> = preferencesRepository.primaryTvSourceId
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "builtin_movy_sx")
+
+    val primaryAnimeSourceId: StateFlow<String> = preferencesRepository.primaryAnimeSourceId
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "builtin_reanime")
 
     val isLanServerRunning: StateFlow<Boolean> = lanPasteServer.isRunning
     val lanServerUrl: StateFlow<String?> = lanPasteServer.serverUrl
@@ -107,10 +118,11 @@ class ResourcesViewModel(
 
     class Factory(
         private val sourceManager: SourceManager,
-        private val lanPasteServer: LanPasteServer
+        private val lanPasteServer: LanPasteServer,
+        private val preferencesRepository: UserPreferencesRepository
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T =
-            ResourcesViewModel(sourceManager, lanPasteServer) as T
+            ResourcesViewModel(sourceManager, lanPasteServer, preferencesRepository) as T
     }
 }

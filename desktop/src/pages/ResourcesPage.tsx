@@ -17,13 +17,19 @@ import { usePreferences } from "../hooks/usePreferences";
 import { api } from "../lib/tauri";
 import type {
   DiscoveredDevice,
+  MediaType,
   SourceHealthResult,
   SyncSummary,
 } from "../types/models";
 
+type ResourceCategoryFilter = "ALL" | MediaType;
+
 export function ResourcesPage() {
-  const { t } = usePreferences();
+  const { prefs, t } = usePreferences();
   const queryClient = useQueryClient();
+
+  const [categoryFilter, setCategoryFilter] =
+    useState<ResourceCategoryFilter>("ALL");
 
   const [sourceUrl, setSourceUrl] = useState("");
   const [sourceError, setSourceError] = useState<string | null>(null);
@@ -206,34 +212,81 @@ export function ResourcesPage() {
 
       {/* Installed Sources */}
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold text-[#F8FAFC]">
-          {t.resources.installedSources}
-        </h2>
-        <div className="grid gap-3">
-          {sources.map((src) => {
-            const health = healthMap[src.id];
-            return (
-              <div
-                key={src.id}
-                className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#283347] bg-[#141923] p-4"
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold text-[#F8FAFC]">
+            {t.resources.installedSources}
+          </h2>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {(
+              [
+                { id: "ALL", label: t.resources.filterAll },
+                { id: "MOVIE", label: t.resources.filterMovies },
+                { id: "TV", label: t.resources.filterSeries },
+                { id: "ANIME", label: t.resources.filterAnime },
+              ] as { id: ResourceCategoryFilter; label: string }[]
+            ).map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setCategoryFilter(tab.id)}
+                className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                  categoryFilter === tab.id
+                    ? "bg-[#38BDF8] text-[#0B0E14]"
+                    : "border border-[#283347] bg-[#141923] text-[#94A3B8] hover:text-[#F8FAFC]"
+                }`}
               >
-                <div className="min-w-0 space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-[#F8FAFC]">
-                      {src.name}
-                    </span>
-                    <span className="rounded-md bg-[#1C2331] px-2 py-0.5 text-[11px] font-medium text-[#94A3B8]">
-                      v{src.version}
-                    </span>
-                    <span className="rounded-md bg-[#818CF8]/15 px-2 py-0.5 text-[11px] font-medium text-[#818CF8]">
-                      {src.driverType}
-                    </span>
-                    {src.isBuiltIn && (
-                      <span className="rounded-md bg-[#38BDF8]/15 px-2 py-0.5 text-[11px] font-medium text-[#38BDF8]">
-                        {t.resources.builtIn}
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="grid gap-3">
+          {sources
+            .filter(
+              (src) =>
+                categoryFilter === "ALL" ||
+                src.supportedTypes.includes(categoryFilter)
+            )
+            .map((src) => {
+              const health = healthMap[src.id];
+              const isPrimary =
+                src.id === prefs.primaryMovieSourceId ||
+                src.id === prefs.primaryTvSourceId ||
+                src.id === prefs.primaryAnimeSourceId;
+              return (
+                <div
+                  key={src.id}
+                  className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#283347] bg-[#141923] p-4"
+                >
+                  <div className="min-w-0 space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-semibold text-[#F8FAFC]">
+                        {src.name}
                       </span>
-                    )}
-                  </div>
+                      <span className="rounded-md bg-[#1C2331] px-2 py-0.5 text-[11px] font-medium text-[#94A3B8]">
+                        v{src.version}
+                      </span>
+                      <span className="rounded-md bg-[#818CF8]/15 px-2 py-0.5 text-[11px] font-medium text-[#818CF8]">
+                        {src.driverType}
+                      </span>
+                      {src.isBuiltIn && (
+                        <span className="rounded-md bg-[#38BDF8]/15 px-2 py-0.5 text-[11px] font-medium text-[#38BDF8]">
+                          {t.resources.builtIn}
+                        </span>
+                      )}
+                      {isPrimary && (
+                        <span className="rounded-md bg-emerald-500/20 px-2 py-0.5 text-[11px] font-semibold text-emerald-400">
+                          {t.resources.primaryBadge}
+                        </span>
+                      )}
+                      {src.supportedTypes.map((st) => (
+                        <span
+                          key={st}
+                          className="rounded-md border border-[#283347] bg-[#0B0E14] px-1.5 py-0.5 text-[10px] font-semibold text-[#94A3B8]"
+                        >
+                          {st}
+                        </span>
+                      ))}
+                    </div>
                   <p className="truncate text-xs text-[#94A3B8]">
                     {src.baseUrl}
                   </p>

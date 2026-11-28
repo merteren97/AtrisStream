@@ -78,6 +78,22 @@ pub struct PagedResult<T> {
     pub has_next_page: bool,
 }
 
+fn default_true() -> bool {
+    true
+}
+
+fn default_primary_movie_source_id() -> String {
+    "builtin_movy_sx".to_string()
+}
+
+fn default_primary_tv_source_id() -> String {
+    "builtin_movy_sx".to_string()
+}
+
+fn default_primary_anime_source_id() -> String {
+    "builtin_reanime".to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Episode {
@@ -91,6 +107,8 @@ pub struct Episode {
     pub thumbnail_url: Option<String>,
     #[serde(default)]
     pub runtime_minutes: Option<i32>,
+    #[serde(default = "default_true")]
+    pub is_released: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -254,6 +272,22 @@ pub struct WatchlistItem {
     #[serde(default)]
     pub rating: Option<f64>,
     pub added_at: i64,
+    #[serde(default)]
+    pub last_watched_season: Option<i32>,
+    #[serde(default)]
+    pub last_watched_episode: Option<i32>,
+    #[serde(default)]
+    pub known_episode_count: i32,
+    #[serde(default)]
+    pub latest_available_season: Option<i32>,
+    #[serde(default)]
+    pub latest_available_episode: Option<i32>,
+    #[serde(default)]
+    pub latest_episode_count: i32,
+    #[serde(default)]
+    pub has_new_episode: bool,
+    #[serde(default)]
+    pub last_checked_at: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -285,6 +319,14 @@ pub struct AppPreferences {
     pub preferred_subtitle_lang: String,
     pub language: String,
     pub subtitle_appearance: SubtitleAppearance,
+    #[serde(default = "default_primary_movie_source_id")]
+    pub primary_movie_source_id: String,
+    #[serde(default = "default_primary_tv_source_id")]
+    pub primary_tv_source_id: String,
+    #[serde(default = "default_primary_anime_source_id")]
+    pub primary_anime_source_id: String,
+    #[serde(default)]
+    pub track_series_new_episodes: bool,
 }
 
 impl Default for AppPreferences {
@@ -296,6 +338,10 @@ impl Default for AppPreferences {
             preferred_subtitle_lang: "tr".to_string(),
             language: "tr".to_string(),
             subtitle_appearance: SubtitleAppearance::default(),
+            primary_movie_source_id: default_primary_movie_source_id(),
+            primary_tv_source_id: default_primary_tv_source_id(),
+            primary_anime_source_id: default_primary_anime_source_id(),
+            track_series_new_episodes: false,
         }
     }
 }

@@ -11,6 +11,7 @@ interface MediaCardViewProps {
   subtitle?: string | null;
   progressRatio?: number;
   episodeBadge?: string | null;
+  highlightBadge?: string | null;
   onClick: () => void;
   contextActions?: {
     removeLabel?: string;
@@ -29,6 +30,7 @@ export function MediaCardView({
   subtitle,
   progressRatio,
   episodeBadge,
+  highlightBadge,
   onClick,
   contextActions,
 }: MediaCardViewProps) {
@@ -79,10 +81,15 @@ export function MediaCardView({
         </div>
 
         {/* Top badges */}
-        <div className="absolute left-2 top-2 flex items-center gap-1.5">
+        <div className="absolute left-2 top-2 flex flex-wrap items-center gap-1.5 pr-12">
           <span className="rounded-md bg-[#0B0E14]/80 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#38BDF8] backdrop-blur-sm">
             {type}
           </span>
+          {highlightBadge && (
+            <span className="rounded-md bg-emerald-400 px-1.5 py-0.5 text-[10px] font-bold text-[#0B0E14] shadow-md shadow-emerald-400/30">
+              {highlightBadge}
+            </span>
+          )}
           {episodeBadge && (
             <span className="rounded-md bg-[#818CF8]/90 px-1.5 py-0.5 text-[10px] font-bold text-[#0B0E14]">
               {episodeBadge}

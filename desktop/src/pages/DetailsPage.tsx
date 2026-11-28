@@ -78,6 +78,18 @@ export function DetailsPage() {
     return fetchedEpisodes;
   }, [currentSeasonObj, fetchedEpisodes]);
 
+  const allLoadedEpisodes = useMemo(() => {
+    if (!details) return [];
+    return details.seasons.flatMap((s) =>
+      s.seasonNumber === selectedSeason ? episodes : s.episodes
+    );
+  }, [details, selectedSeason, episodes]);
+
+  const releasedEpisodeCount = useMemo(
+    () => allLoadedEpisodes.filter((e) => e.isReleased !== false).length,
+    [allLoadedEpisodes]
+  );
+
   const toggleWatchlistMutation = useMutation({
     mutationFn: () =>
       api.toggleWatchlist({
@@ -89,11 +101,43 @@ export function DetailsPage() {
         year: details!.year,
         rating: details!.rating,
         addedAt: Date.now(),
+        knownEpisodeCount: releasedEpisodeCount,
+        lastWatchedSeason: latestProgress?.seasonNumber ?? null,
+        lastWatchedEpisode: latestProgress?.episodeNumber ?? null,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ["watchlistSaved", target?.sourceId, target?.mediaId],
       });
+      queryClient.invalidateQueries({ queryKey: ["watchlist"] });
+    },
+  });
+
+  const setEpisodeCompletedMutation = useMutation({
+    mutationFn: (params: {
+      seasonNumber?: number | null;
+      episodeNumber?: number | null;
+      completed: boolean;
+    }) =>
+      api.setEpisodeCompleted({
+        sourceId: details!.sourceId,
+        mediaId: details!.id,
+        mediaType: details!.type,
+        title: details!.title,
+        posterUrl: details!.posterUrl,
+        seasonNumber: params.seasonNumber ?? null,
+        episodeNumber: params.episodeNumber ?? null,
+        completed: params.completed,
+        releasedCount: releasedEpisodeCount > 0 ? releasedEpisodeCount : null,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["allProgress", target?.sourceId, target?.mediaId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["latestProgress", target?.sourceId, target?.mediaId],
+      });
+      queryClient.invalidateQueries({ queryKey: ["continueWatching"] });
       queryClient.invalidateQueries({ queryKey: ["watchlist"] });
     },
   });
@@ -148,8 +192,11 @@ export function DetailsPage() {
             e.seasonNumber === latestProgress.seasonNumber &&
             e.episodeNumber === latestProgress.episodeNumber
         );
-        if (idx >= 0 && idx + 1 < allEps.length) {
-          const nextEp = allEps[idx + 1];
+        const nextEp =
+          idx >= 0
+            ? allEps.slice(idx + 1).find((e) => e.isReleased !== false)
+            : undefined;
+        if (nextEp) {
           return {
             label: `${t.details.nextEpisode} S${nextEp.seasonNumber} E${nextEp.episodeNumber}`,
             seasonNumber: nextEp.seasonNumber,
@@ -160,7 +207,9 @@ export function DetailsPage() {
       }
     }
 
-    const firstEp = details.seasons[0]?.episodes[0] ?? episodes[0];
+    const firstEp =
+      details.seasons[0]?.episodes.find((e) => e.isReleased !== false) ??
+      episodes.find((e) => e.isReleased !== false);
     return {
       label: firstEp
         ? `${t.details.play} S${firstEp.seasonNumber} E${firstEp.episodeNumber}`
@@ -181,10 +230,6 @@ export function DetailsPage() {
       </div>
     );
   }
-
-  const allLoadedEpisodes = details.seasons.flatMap((s) =>
-    s.seasonNumber === selectedSeason ? episodes : s.episodes
-  );
 
   return (
     <div className="space-y-8 pb-12">
@@ -282,6 +327,23 @@ export function DetailsPage() {
                 </button>
               )}
 
+              {latestProgress && !latestProgress.isCompleted && (
+                <button
+                  onClick={() =>
+                    setEpisodeCompletedMutation.mutate({
+                      seasonNumber: latestProgress.seasonNumber,
+                      episodeNumber: latestProgress.episodeNumber,
+                      completed: true,
+                    })
+                  }
+                  disabled={setEpisodeCompletedMutation.isPending}
+                  className="flex items-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-500/15 px-4 py-2.5 text-sm font-semibold text-emerald-300 transition-colors hover:bg-emerald-500/25 disabled:opacity-50"
+                >
+                  <CheckCircle2 className="h-4 w-4" />
+                  <span>{t.details.finishCurrentEpisode}</span>
+                </button>
+              )}
+
               <button
                 onClick={() => toggleWatchlistMutation.mutate()}
                 className={`flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-medium transition-colors ${
@@ -329,32 +391,55 @@ export function DetailsPage() {
                 `${ep.seasonNumber}_${ep.episodeNumber}`
               );
               const isCompleted = prog?.isCompleted ?? false;
+              const isReleased = ep.isReleased !== false;
               const ratio =
                 prog && prog.durationMs > 0
                   ? prog.positionMs / prog.durationMs
                   : 0;
 
+              const launchEpisode = () => {
+                if (!isReleased) return;
+                openPlayer({
+                  sourceId: details.sourceId,
+                  mediaId: details.id,
+                  mediaType: details.type,
+                  title: details.title,
+                  posterUrl: details.posterUrl,
+                  seasonNumber: ep.seasonNumber,
+                  episodeNumber: ep.episodeNumber,
+                  episodeTitle: ep.title,
+                  // Replaying a completed episode starts from 0ms
+                  resumePositionMs: isCompleted ? 0 : (prog?.positionMs ?? 0),
+                  episodes: allLoadedEpisodes,
+                });
+              };
+
               return (
-                <button
+                <div
                   key={`${ep.seasonNumber}_${ep.episodeNumber}_${ep.id}`}
-                  onClick={() =>
-                    openPlayer({
-                      sourceId: details.sourceId,
-                      mediaId: details.id,
-                      mediaType: details.type,
-                      title: details.title,
-                      posterUrl: details.posterUrl,
-                      seasonNumber: ep.seasonNumber,
-                      episodeNumber: ep.episodeNumber,
-                      episodeTitle: ep.title,
-                      // Replaying a completed episode starts from 0ms
-                      resumePositionMs: isCompleted ? 0 : (prog?.positionMs ?? 0),
-                      episodes: allLoadedEpisodes,
-                    })
-                  }
-                  className="group relative flex items-center gap-4 overflow-hidden rounded-xl border border-[#283347] bg-[#141923] p-3.5 text-left transition-colors hover:border-[#38BDF8] hover:bg-[#1C2331]"
+                  role="button"
+                  tabIndex={isReleased ? 0 : -1}
+                  aria-disabled={!isReleased}
+                  onClick={launchEpisode}
+                  onKeyDown={(e) => {
+                    if (isReleased && (e.key === "Enter" || e.key === " ")) {
+                      e.preventDefault();
+                      launchEpisode();
+                    }
+                  }}
+                  className={`group relative flex items-center gap-4 overflow-hidden rounded-xl border border-[#283347] bg-[#141923] p-3.5 text-left transition-colors ${
+                    isReleased
+                      ? "cursor-pointer hover:border-[#38BDF8] hover:bg-[#1C2331]"
+                      : "cursor-not-allowed opacity-55"
+                  }`}
                 >
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-[#1C2331] text-sm font-bold text-[#38BDF8] group-hover:bg-[#38BDF8] group-hover:text-[#0B0E14]">
+                  <div
+                    className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-[#1C2331] text-sm font-bold text-[#38BDF8] ${
+                      isReleased
+                        ? "group-hover:bg-[#38BDF8] group-hover:text-[#0B0E14]"
+                        : ""
+                    }`}
+                  >
                     {ep.episodeNumber}
                   </div>
                   <div className="min-w-0 flex-1">
@@ -362,12 +447,51 @@ export function DetailsPage() {
                       <p className="truncate text-sm font-semibold text-[#F8FAFC]">
                         {ep.title || `Bölüm ${ep.episodeNumber}`}
                       </p>
-                      {isCompleted && (
-                        <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-medium text-emerald-400">
-                          <CheckCircle2 className="h-3 w-3" />
-                          {t.details.watched}
-                        </span>
-                      )}
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        {!isReleased ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-300">
+                            {t.details.upcoming}
+                          </span>
+                        ) : (
+                          <>
+                            {isCompleted && (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-medium text-emerald-400">
+                                <CheckCircle2 className="h-3 w-3" />
+                                {t.details.watched}
+                              </span>
+                            )}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEpisodeCompletedMutation.mutate({
+                                  seasonNumber: ep.seasonNumber,
+                                  episodeNumber: ep.episodeNumber,
+                                  completed: !isCompleted,
+                                });
+                              }}
+                              disabled={setEpisodeCompletedMutation.isPending}
+                              title={
+                                isCompleted
+                                  ? t.details.markUnwatched
+                                  : t.details.markFinished
+                              }
+                              className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-medium transition-colors ${
+                                isCompleted
+                                  ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25"
+                                  : "border-[#283347] bg-[#1C2331] text-[#94A3B8] hover:border-[#38BDF8] hover:text-[#38BDF8]"
+                              }`}
+                            >
+                              <CheckCircle2 className="h-3 w-3" />
+                              <span>
+                                {isCompleted
+                                  ? t.details.markUnwatched
+                                  : t.details.markFinished}
+                              </span>
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </div>
                     {ep.overview && (
                       <p className="mt-0.5 line-clamp-2 text-xs text-[#94A3B8]">
@@ -384,7 +508,7 @@ export function DetailsPage() {
                       />
                     </div>
                   )}
-                </button>
+                </div>
               );
             })}
           </div>
